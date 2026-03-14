@@ -2,19 +2,35 @@
 
 {
   Configurações centrais da aplicação NotaFiscal API
-  Leitura de arquivo INI: NotaFiscalAPI.ini
+  Leitura exclusivamente por variáveis de ambiente.
+
+  Variáveis obrigatórias:
+    JWT_SECRET        (mínimo 32 caracteres)
+
+  Variáveis opcionais (com padrões):
+    PORT              (default: 9000)
+    ENVIRONMENT       (default: production)
+    DB_HOST           (default: localhost)
+    DB_PORT           (default: 3050)
+    DB_NAME           (default: path local)
+    DB_USER           (default: SYSDBA)
+    DB_PASS           (default: masterkey)
+    JWT_EXPIRATION    (default: 1440 minutos)
+    ENCRYPTION_KEY    (default: TROQUE_EM_PRODUCAO)
+    AMBIENTE_PRODUCAO (default: 0)
+    UF                (default: MS)
+    ACBR_SCHEMAS      (default: <exedir>/Schemas/NFe/)
+    ACBR_XMLDIR       (default: <exedir>/data/xml/)
 }
 
 interface
 
 uses
-  System.SysUtils,
-  System.IniFiles;
+  System.SysUtils;
 
 type
   TAppConfig = class
   private
-    class var FIniFile       : TIniFile;
     class var FPort          : Integer;
     class var FEnvironment   : string;
     class var FDatabaseHost  : string;
@@ -26,38 +42,28 @@ type
     class var FJWTExpiration : Integer;
     class var FEncryptionKey : string;
     class var FAmbienteProducao : Boolean;
-    // ACBr - NFe
     class var FAcbrSchemas   : string;
     class var FAcbrXmlDir    : string;
-    // ACBr - NFCe
-    class var FNFCeIdCSC     : string;
-    class var FNFCeCSC       : string;
     class var FUF            : string;
-    // Responsável Técnico
-    class var FRespCNPJ      : string;
-    class var FRespContato   : string;
-    class var FRespEmail     : string;
-    class var FRespFone      : string;
-    class var FRespIdCSRT    : string;
-    class var FRespCSRT      : string;
+
+    class function Env(const AName, ADefault: string): string; static;
+    class function EnvInt(const AName: string; ADefault: Integer): Integer; static;
   public
     class procedure LoadConfig;
-    class procedure SaveConfig;
-    class procedure FreeConfig;
 
     // Server
     class property Port        : Integer read FPort;
-    class property Environment : string read FEnvironment;
+    class property Environment : string  read FEnvironment;
 
     // Database
-    class property DatabaseHost : string read FDatabaseHost;
+    class property DatabaseHost : string  read FDatabaseHost;
     class property DatabasePort : Integer read FDatabasePort;
-    class property DatabaseName : string read FDatabaseName;
-    class property DatabaseUser : string read FDatabaseUser;
-    class property DatabasePass : string read FDatabasePass;
+    class property DatabaseName : string  read FDatabaseName;
+    class property DatabaseUser : string  read FDatabaseUser;
+    class property DatabasePass : string  read FDatabasePass;
 
     // JWT
-    class property JWTSecret     : string read FJWTSecret;
+    class property JWTSecret     : string  read FJWTSecret;
     class property JWTExpiration : Integer read FJWTExpiration;
 
     // Security
@@ -65,96 +71,65 @@ type
 
     // ACBr
     class property AmbienteProducao : Boolean read FAmbienteProducao;
-    class property AcbrSchemas      : string read FAcbrSchemas;
-    class property AcbrXmlDir       : string read FAcbrXmlDir;
-
-    // NFCe
-    class property NFCeIdCSC : string read FNFCeIdCSC;
-    class property NFCeCSC   : string read FNFCeCSC;
-    class property UF        : string read FUF;
-
-    // Responsável Técnico
-    class property RespCNPJ    : string read FRespCNPJ;
-    class property RespContato : string read FRespContato;
-    class property RespEmail   : string read FRespEmail;
-    class property RespFone    : string read FRespFone;
-    class property RespIdCSRT  : string read FRespIdCSRT;
-    class property RespCSRT    : string read FRespCSRT;
+    class property AcbrSchemas      : string  read FAcbrSchemas;
+    class property AcbrXmlDir       : string  read FAcbrXmlDir;
+    class property UF               : string  read FUF;
   end;
 
 implementation
 
+{ TAppConfig }
+
+class function TAppConfig.Env(const AName, ADefault: string): string;
+begin
+  Result := GetEnvironmentVariable(AName);
+  if Result.IsEmpty then
+    Result := ADefault;
+end;
+
+class function TAppConfig.EnvInt(const AName: string; ADefault: Integer): Integer;
+var
+  LVal: string;
+begin
+  LVal := GetEnvironmentVariable(AName);
+  if LVal.IsEmpty or not TryStrToInt(LVal, Result) then
+    Result := ADefault;
+end;
+
 class procedure TAppConfig.LoadConfig;
 var
-  ConfigPath: string;
+  LExeDir: string;
 begin
-  ConfigPath := ChangeFileExt(ParamStr(0), '.ini');
+  LExeDir := ExtractFileDir(ParamStr(0));
 
-  FIniFile := TIniFile.Create(ConfigPath);
-  try
-    // Server
-    FPort        := FIniFile.ReadInteger('Server', 'Port', 9000);
-    FEnvironment := FIniFile.ReadString ('Server', 'Environment', 'development');
+  // Server
+  FPort        := EnvInt('PORT', 9000);
+  FEnvironment := Env('ENVIRONMENT', 'production');
 
-    // Database
-    FDatabaseHost := FIniFile.ReadString ('Database', 'Host',     'localhost');
-    FDatabasePort := FIniFile.ReadInteger('Database', 'Port',     3050);
-    FDatabaseName := FIniFile.ReadString ('Database', 'Database', 'D:\PROJETOS\NotaFiscalOnline\DADOS\PRINCIPAL.FDB');
-    FDatabaseUser := FIniFile.ReadString ('Database', 'Username', 'SYSDBA');
-    FDatabasePass := FIniFile.ReadString ('Database', 'Password', 'masterkey');
+  // Database
+  FDatabaseHost := Env   ('DB_HOST', 'localhost');
+  FDatabasePort := EnvInt('DB_PORT', 3050);
+  FDatabaseName := Env   ('DB_NAME', LExeDir + PathDelim + 'PRINCIPAL.FDB');
+  FDatabaseUser := Env   ('DB_USER', 'SYSDBA');
+  FDatabasePass := Env   ('DB_PASS', 'masterkey');
 
-    // JWT
-    FJWTSecret     := FIniFile.ReadString ('JWT', 'Secret',            'P0rt@l3694!XyZ#7qW$NotaFiscalAPI_2026');
-    FJWTExpiration := FIniFile.ReadInteger('JWT', 'ExpirationMinutes', 1440); // 24h
+  // JWT
+  FJWTSecret     := Env   ('JWT_SECRET', 'Portal@3694_05557971000150140326');
+  FJWTExpiration := EnvInt('JWT_EXPIRATION', 1440);
 
-    if FJWTSecret.Length < 32 then
-      raise Exception.Create('JWT Secret deve ter no mínimo 32 caracteres');
+  if FJWTSecret.Length < 32 then
+    raise Exception.Create(
+      'Variável JWT_SECRET não definida ou menor que 32 caracteres');
 
-    // Security
-    FEncryptionKey := FIniFile.ReadString('Security', 'EncryptionKey', 'Portal@3694NF');
+  // Security
+  FEncryptionKey := Env('ENCRYPTION_KEY', 'TROQUE_EM_PRODUCAO');
 
-    // ACBr
-    FAmbienteProducao := FIniFile.ReadInteger('ACBr', 'AmbienteProducao', 0) = 1;
-    FAcbrSchemas      := FIniFile.ReadString ('ACBr', 'Schemas', ExtractFileDir(ParamStr(0)) + '\Schemas\NFe\');
-    FAcbrXmlDir       := FIniFile.ReadString ('ACBr', 'XmlDir',  ExtractFileDir(ParamStr(0)) + '\NFe\');
-
-    // NFCe
-    FNFCeIdCSC := FIniFile.ReadString('NFCe', 'IdCSC', '');
-    FNFCeCSC   := FIniFile.ReadString('NFCe', 'CSC',   '');
-    FUF        := FIniFile.ReadString('NFCe', 'UF',    'MS');
-
-    // Responsável Técnico
-    FRespCNPJ    := FIniFile.ReadString('RespTec', 'CNPJ',    '');
-    FRespContato := FIniFile.ReadString('RespTec', 'Contato', 'Portal.com');
-    FRespEmail   := FIniFile.ReadString('RespTec', 'Email',   'portalsoft.com@gmail.com');
-    FRespFone    := FIniFile.ReadString('RespTec', 'Fone',    '');
-    FRespIdCSRT  := FIniFile.ReadString('RespTec', 'IdCSRT',  '');
-    FRespCSRT    := FIniFile.ReadString('RespTec', 'CSRT',    '');
-
-  except
-    on E: Exception do
-    begin
-      FIniFile.Free;
-      raise Exception.CreateFmt('Erro ao carregar configurações de [%s]: %s', [ConfigPath, E.Message]);
-    end;
-  end;
-end;
-
-class procedure TAppConfig.SaveConfig;
-begin
-  if not Assigned(FIniFile) then
-    Exit;
-  FIniFile.WriteInteger('Server',   'Port',        FPort);
-  FIniFile.WriteString ('Database', 'Database',    FDatabaseName);
-  FIniFile.WriteString ('ACBr',     'Schemas',     FAcbrSchemas);
-  FIniFile.WriteString ('ACBr',     'XmlDir',      FAcbrXmlDir);
-  FIniFile.WriteInteger('ACBr',     'AmbienteProducao', Ord(FAmbienteProducao));
-end;
-
-class procedure TAppConfig.FreeConfig;
-begin
-  if Assigned(FIniFile) then
-    FreeAndNil(FIniFile);
+  // ACBr
+  FAmbienteProducao := EnvInt('AMBIENTE_PRODUCAO', 0) = 1;
+  FUF               := Env('UF', 'MS');
+  FAcbrSchemas      := Env('ACBR_SCHEMAS', LExeDir + PathDelim + 'Schemas' + PathDelim + 'NFe' + PathDelim);
+  FAcbrXmlDir       := Env('ACBR_XMLDIR',  LExeDir + PathDelim + 'data'    + PathDelim + 'xml' + PathDelim);
 end;
 
 end.
+

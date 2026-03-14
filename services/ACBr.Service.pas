@@ -33,7 +33,8 @@ uses
 	pcnConversaoNFe,
 	ACBrDFe.Conversao,
 	ACBrDFeSSL,
-	UnitConnection.Model.Interfaces, 
+	UnitConnection.Model.Interfaces,
+	Models.NF,
   ACBrNFe.Classes,
 	ACBrNFe.EnvEvento;
 
@@ -54,6 +55,8 @@ type
 		FACBrNFe    : TACBrNFe;
 		FConfigurado: Boolean;
 		FCNPJ       : string;
+		FUsuarioId  : Integer;
+		FConfig     : TModelConfiguracaoUsuario;
 
 		procedure ConfigurarGeral(AModeloDF: string);
 		function CarregarCertificado(const ACNPJ: string): Boolean;
@@ -74,8 +77,8 @@ type
 		constructor Create;
 		destructor Destroy; override;
 
-		/// <summary>Configura o ACBr carregando o certificado do CNPJ informado</summary>
-		function Configurar(const ACNPJ: string): Boolean;
+		/// <summary>Configura o ACBr carregando o certificado e configurações do usuário</summary>
+		function Configurar(const ACNPJ: string; AUsuarioId: Integer = 0): Boolean;
 
 		function EmitirNFe(AJSON: TJSONObject): TResultadoEmissao;
 		function EmitirNFCe(AJSON: TJSONObject): TResultadoEmissao;
@@ -103,19 +106,33 @@ begin
 	inherited Create;
 	FACBrNFe     := TACBrNFe.Create(nil);
 	FConfigurado := False;
+	FUsuarioId   := 0;
+	FConfig      := nil;
 end;
 
 destructor TACBrNFeService.Destroy;
 begin
 	FreeAndNil(FACBrNFe);
+	FreeAndNil(FConfig);
 	inherited Destroy;
 end;
 
-function TACBrNFeService.Configurar(const ACNPJ: string): Boolean;
+function TACBrNFeService.Configurar(const ACNPJ: string; AUsuarioId: Integer = 0): Boolean;
 begin
-	FCNPJ  := ACNPJ;
-	Result := False;
+	FCNPJ      := ACNPJ;
+	FUsuarioId := AUsuarioId;
+	Result     := False;
 	try
+		// Carrega configurações por usuário (RespTec, NFCe CSC, etc.)
+		FreeAndNil(FConfig);
+		if FUsuarioId > 0 then
+		begin
+			FConfig := TModelConfiguracaoUsuario.Create(TDatabase.Connection);
+			FConfig.BuscaPorCampo('CFG_USU', FUsuarioId);
+			if FConfig.Codigo = 0 then
+				FreeAndNil(FConfig); // usuário sem configuração ainda — sem dados de RespTec
+		end;
+
 		// Carrega o certificado do banco antes de configurar
 		if not CarregarCertificado(ACNPJ) then
 		begin
@@ -148,8 +165,11 @@ begin
 		if AModeloDF = 'NFCe' then
 		begin
 			Geral.ModeloDF := moNFCe;
-			Geral.IdCSC    := TAppConfig.NFCeIdCSC;
-			Geral.CSC      := TAppConfig.NFCeCSC;
+			if Assigned(FConfig) then
+			begin
+				Geral.IdCSC := FConfig.NFCeIdCSC;
+				Geral.CSC   := FConfig.NFCeCSC;
+			end;
 		end
 		else
 			Geral.ModeloDF := moNFe;
@@ -328,13 +348,13 @@ begin
 			LNFe.Ide.indPres  := TpcnPresencaComprador(AJSON.GetValue<Integer>('indicador_presenca', 1));
 			LNFe.Ide.tpAmb    := TACBrTipoAmbiente(AJSON.GetValue<Integer>('ambiente', 2));
 
-			// Responsável Técnico
-			if not TAppConfig.RespCNPJ.IsEmpty then
+			// Responsável Técnico (por usuário, via CONFIGURACOES_USUARIO)
+			if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty then
 			begin
-				LNFe.infRespTec.CNPJ     := TAppConfig.RespCNPJ;
-				LNFe.infRespTec.xContato := TAppConfig.RespContato;
-				LNFe.infRespTec.email    := TAppConfig.RespEmail;
-				LNFe.infRespTec.fone     := TAppConfig.RespFone;
+				LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
+				LNFe.infRespTec.xContato := FConfig.RespContato;
+				LNFe.infRespTec.email    := FConfig.RespEmail;
+				LNFe.infRespTec.fone     := FConfig.RespFone;
 			end;
 
 			// Emitente - lido do banco pelo CNPJ
@@ -540,13 +560,13 @@ begin
 			LNFe.Ide.indPres  := TpcnPresencaComprador.pcPresencial; // presencial
 			LNFe.Ide.tpAmb    := TACBrTipoAmbiente(AJSON.GetValue<Integer>('ambiente', 2));
 
-			// Responsável Técnico
-			if not TAppConfig.RespCNPJ.IsEmpty then
+			// Responsável Técnico (por usuário, via CONFIGURACOES_USUARIO)
+			if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty then
 			begin
-				LNFe.infRespTec.CNPJ     := TAppConfig.RespCNPJ;
-				LNFe.infRespTec.xContato := TAppConfig.RespContato;
-				LNFe.infRespTec.email    := TAppConfig.RespEmail;
-				LNFe.infRespTec.fone     := TAppConfig.RespFone;
+				LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
+				LNFe.infRespTec.xContato := FConfig.RespContato;
+				LNFe.infRespTec.email    := FConfig.RespEmail;
+				LNFe.infRespTec.fone     := FConfig.RespFone;
 			end;
 
 			// Emitente

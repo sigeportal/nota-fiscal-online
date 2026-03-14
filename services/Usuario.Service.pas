@@ -1,11 +1,11 @@
 unit Usuario.Service;
 
 {
-  Serviço de cadastro de usuários
+  Serviço de cadastro e gerenciamento de usuários
   - Valida campos obrigatórios
   - Garante unicidade de username e e-mail
   - Armazena senha como SHA-256 (compatível com Auth.Service)
-  - Insere registro na tabela USUARIOS
+  - Usa PortalORM (TModelUsuario): BuscaPorCampo, SalvaNoBanco, Apagar
 }
 
 interface
@@ -33,6 +33,8 @@ type
   TUsuarioService = class
   public
     class function Cadastrar(const AInput: TCadastroUsuarioInput): TCadastroUsuarioResult;
+    class function BuscarPorId(const AId: Integer): TJSONObject;
+    class function AtualizarPerfil(const AId: Integer; const ABody: TJSONObject): TCadastroUsuarioResult;
   private
     class function HashPassword(const APassword: string): string;
     class function UsernameOuEmailJaExiste(const AUsername, AEmail: string): Boolean;
@@ -41,7 +43,9 @@ type
 implementation
 
 uses
+  System.DateUtils,
   UnitDatabase,
+  Models.NF,
   Logger.Utils,
   System.Hash;
 
@@ -54,21 +58,28 @@ end;
 
 class function TUsuarioService.UsernameOuEmailJaExiste(const AUsername, AEmail: string): Boolean;
 var
-  LQuery: iQuery;
+  LUsuario: TModelUsuario;
 begin
-  LQuery := TDatabase.Query;
-  LQuery.Clear;
-  LQuery.Add('SELECT COUNT(*) AS QTD FROM USUARIOS');
-  LQuery.Add('WHERE USU_USERNAME = :USERNAME OR USU_EMAIL = :EMAIL');
-  LQuery.AddParam('USERNAME', AUsername);
-  LQuery.AddParam('EMAIL',    AEmail);
-  LQuery.Open;
-  Result := LQuery.DataSet.FieldByName('QTD').AsInteger > 0;
+  // BuscaPorCampos verifica os dois campos de uma vez via AND,
+  // mas como precisamos de OR usamos iQuery direto apenas para a checagem.
+  // Alternativa: duas chamadas BuscaPorCampo independentes.
+  LUsuario := TModelUsuario.Create(TDatabase.Connection);
+  try
+    LUsuario.BuscaPorCampo('USU_USERNAME', AUsername);
+    Result := LUsuario.Codigo > 0;
+    if not Result then
+    begin
+      LUsuario.BuscaPorCampo('USU_EMAIL', AEmail);
+      Result := LUsuario.Codigo > 0;
+    end;
+  finally
+    LUsuario.Free;
+  end;
 end;
 
 class function TUsuarioService.Cadastrar(const AInput: TCadastroUsuarioInput): TCadastroUsuarioResult;
 var
-  LQuery: iQuery;
+  LUsuario: TModelUsuario;
 begin
   Result.Sucesso := False;
   Result.UserId  := 0;
@@ -118,27 +129,108 @@ begin
     Exit;
   end;
 
-  // --- inserção ---
-  LQuery := TDatabase.Query;
-  LQuery.Clear;
-  LQuery.Add('INSERT INTO USUARIOS');
-  LQuery.Add('  (USU_CODIGO, USU_USERNAME, USU_EMAIL, USU_PASSWORD_HASH,');
-  LQuery.Add('   USU_CNPJ, USU_RAZAO_SOCIAL, USU_ATIVO)');
-  LQuery.Add('VALUES');
-  LQuery.Add('  (GEN_ID(GEN_USU_CODIGO, 1), :USERNAME, :EMAIL, :SENHA,');
-  LQuery.Add('   :CNPJ, :RAZAO_SOCIAL, 1)');
-  LQuery.Add('RETURNING USU_CODIGO');
-  LQuery.AddParam('USERNAME',    AInput.Username.Trim);
-  LQuery.AddParam('EMAIL',       AInput.Email.Trim.ToLower);
-  LQuery.AddParam('SENHA',       HashPassword(AInput.Password));
-  LQuery.AddParam('CNPJ',        AInput.CNPJ.Trim);
-  LQuery.AddParam('RAZAO_SOCIAL', AInput.RazaoSocial.Trim);
-  LQuery.Open;
-  if not LQuery.DataSet.IsEmpty then
-  begin
+  // --- inserção via PortalORM ---
+  LUsuario := TModelUsuario.Create(TDatabase.Connection);
+  try
+  	LUsuario.Codigo      := LUsuario.GeraCodigo('USU_CODIGO');
+    LUsuario.Username    := AInput.Username.Trim;
+    LUsuario.Email       := AInput.Email.Trim.ToLower;
+    LUsuario.PasswordHash := HashPassword(AInput.Password);
+    LUsuario.CNPJ        := AInput.CNPJ.Trim;
+    LUsuario.RazaoSocial := AInput.RazaoSocial.Trim;
+    LUsuario.Ativo       := 1;
+    LUsuario.DataCriacao := Now;
+    LUsuario.DataAtualizacao := Now;
+
+    LUsuario.SalvaNoBanco(1);
+
+    // Re-busca para obter o código gerado
+    LUsuario.BuscaPorCampos(
+      ['USU_USERNAME', 'USU_EMAIL'],
+      [AInput.Username.Trim, AInput.Email.Trim.ToLower]
+    );
+
+    Result.Sucesso := LUsuario.Codigo > 0;
+    Result.UserId  := LUsuario.Codigo;
+
+    if Result.Sucesso then
+      TLogger.Info('Usuario.Service: usuário "%s" cadastrado (id=%d)',
+                   [AInput.Username, Result.UserId])
+    else
+      Result.Erro := 'Falha ao recuperar ID do usuário criado';
+  finally
+    LUsuario.Free;
+  end;
+end;
+
+class function TUsuarioService.BuscarPorId(const AId: Integer): TJSONObject;
+var
+  LUsuario: TModelUsuario;
+begin
+  Result   := nil;
+  LUsuario := TModelUsuario.Create(TDatabase.Connection);
+  try
+    LUsuario.BuscaDadosTabela(AId);
+    if LUsuario.Codigo = 0 then
+      Exit;
+    Result := TJSONObject.Create;
+    Result.AddPair('id',            TJSONNumber.Create(LUsuario.Codigo));
+    Result.AddPair('username',      LUsuario.Username);
+    Result.AddPair('email',         LUsuario.Email);
+    Result.AddPair('cnpj',          LUsuario.CNPJ);
+    Result.AddPair('razao_social',  LUsuario.RazaoSocial);
+    Result.AddPair('inscricao_estadual', LUsuario.InscricaoEstadual);
+    Result.AddPair('endereco',      LUsuario.Endereco);
+    Result.AddPair('cidade',        LUsuario.Cidade);
+    Result.AddPair('uf',            LUsuario.UF);
+    Result.AddPair('cep',           LUsuario.CEP);
+    Result.AddPair('telefone',      LUsuario.Telefone);
+    Result.AddPair('ativo',         TJSONBool.Create(LUsuario.Ativo = 1));
+  finally
+    LUsuario.Free;
+  end;
+end;
+
+class function TUsuarioService.AtualizarPerfil(const AId: Integer;
+  const ABody: TJSONObject): TCadastroUsuarioResult;
+var
+  LUsuario: TModelUsuario;
+  LValor  : string;
+begin
+  Result.Sucesso := False;
+  Result.UserId  := AId;
+  Result.Erro    := '';
+
+  LUsuario := TModelUsuario.Create(TDatabase.Connection);
+  try
+    LUsuario.BuscaDadosTabela(AId);
+    if LUsuario.Codigo = 0 then
+    begin
+      Result.Erro := 'Usuário não encontrado';
+      Exit;
+    end;
+
+    // Atualiza somente os campos presentes no body
+    if ABody.TryGetValue<string>('razao_social', LValor) then
+      LUsuario.RazaoSocial := LValor;
+    if ABody.TryGetValue<string>('inscricao_estadual', LValor) then
+      LUsuario.InscricaoEstadual := LValor;
+    if ABody.TryGetValue<string>('endereco', LValor) then
+      LUsuario.Endereco := LValor;
+    if ABody.TryGetValue<string>('cidade', LValor) then
+      LUsuario.Cidade := LValor;
+    if ABody.TryGetValue<string>('uf', LValor) then
+      LUsuario.UF := LValor;
+    if ABody.TryGetValue<string>('cep', LValor) then
+      LUsuario.CEP := LValor;
+    if ABody.TryGetValue<string>('telefone', LValor) then
+      LUsuario.Telefone := LValor;
+
+    LUsuario.DataAtualizacao := Now;
+    LUsuario.SalvaNoBanco(1);
     Result.Sucesso := True;
-    Result.UserId := LQuery.DataSet.FieldByName('USU_CODIGO').AsInteger;
-    TLogger.Info('Usuario.Service: usuário "%s" cadastrado (id=%d)', [AInput.Username, Result.UserId]);
+  finally
+    LUsuario.Free;
   end;
 end;
 

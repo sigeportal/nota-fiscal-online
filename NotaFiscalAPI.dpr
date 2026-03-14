@@ -32,7 +32,9 @@ uses
   UnitDatabase in '..\..\FormsComuns\Classes\ServidoresUtils\Database\UnitDatabase.pas',
   UnitConstants in '..\..\FormsComuns\Classes\ServidoresUtils\Utils\UnitConstants.pas',
   Usuario.Controller in 'Controllers\Usuario.Controller.pas',
-  Usuario.Service in 'services\Usuario.Service.pas';
+  Usuario.Service in 'services\Usuario.Service.pas',
+  Configuracao.Controller in 'Controllers\Configuracao.Controller.pas',
+  Configuracao.Service in 'services\Configuracao.Service.pas';
 
 var
   LLogConfig: THorseLoggerConsoleConfig;    
@@ -75,24 +77,7 @@ begin
       .&End
       .AddBearerSecurity
        .AddCallBack(MiddlewareAuth)
-      .&End;
-
-    // ---- Controllers registram suas rotas via initialization ----
-    //   Auth.Controller       -> POST /v1/auth/login
-    //   Certificado.Controller-> POST /v1/certificados/upload
-    //                            GET  /v1/certificados/:cnpj
-    //   NFe.Controller        -> POST /v1/nfe
-    //                            GET  /v1/nfe/:chave
-    //                            POST /v1/nfe/:chave/cancelar
-    //                            GET  /v1/nfe/:chave/xml
-    //                            GET  /v1/nfe/:chave/danfe
-    //   NFCe.Controller       -> POST /v1/nfce
-    //                            GET  /v1/nfce/:chave
-    //                            POST /v1/nfce/:chave/cancelar
-    //                            GET  /v1/nfce/:chave/xml
-    //                            GET  /v1/nfce/:chave/danfe
-    //   Sefaz.Controller      -> GET  /v1/sefaz/status
-    //                            POST /v1/sefaz/inutilizar
+      .&End;   
 
     // ---- Health check (rota pública sem autenticação) ----
     THorse.Get('/health',

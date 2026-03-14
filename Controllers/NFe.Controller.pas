@@ -75,6 +75,7 @@ type
     class procedure ObterXML(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class procedure ObterDANFE(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class function  ExtrairCNPJ(Req: THorseRequest): string;
+    class function  ExtrairUserId(Req: THorseRequest): Integer;
   end;
 
 implementation
@@ -92,6 +93,14 @@ begin
   Result := '';
   try
     Result := Req.Session<TJSONObject>.GetValue<string>('cnpj');
+  except end;
+end;
+
+class function TNFeController.ExtrairUserId(Req: THorseRequest): Integer;
+begin
+  Result := 0;
+  try
+    Result := Req.Session<TJSONObject>.GetValue<Integer>('user_id');
   except end;
 end;
 
@@ -122,7 +131,7 @@ begin
 
     LService := TACBrNFeService.Create;
     try
-      if not LService.Configurar(LCNPJ) then
+      if not LService.Configurar(LCNPJ, ExtrairUserId(Req)) then
       begin
         Res.Send<TJSONObject>(TResponseUtils.Error(
           'Certificado não encontrado para o CNPJ ' + LCNPJ, 400))
@@ -170,7 +179,7 @@ begin
 
     LService := TACBrNFeService.Create;
     try
-      LService.Configurar(LCNPJ);
+      LService.Configurar(LCNPJ, ExtrairUserId(Req));
       LResult := LService.ConsultarNFe(LChave);
     finally
       LService.Free;
@@ -240,7 +249,7 @@ begin
 
     LService := TACBrNFeService.Create;
     try
-      LService.Configurar(LCNPJ);
+      LService.Configurar(LCNPJ, ExtrairUserId(Req));
       LResult := LService.Cancelar(LChave, LProtocolo, LJustificativa);
     finally
       LService.Free;
@@ -281,7 +290,7 @@ begin
 
     LService := TACBrNFeService.Create;
     try
-      LService.Configurar(LCNPJ);
+      LService.Configurar(LCNPJ, ExtrairUserId(Req));
       LXML := LService.ObterXML(LChave);
     finally
       LService.Free;
@@ -316,7 +325,7 @@ begin
 
     LService := TACBrNFeService.Create;
     try
-      LService.Configurar(LCNPJ);
+      LService.Configurar(LCNPJ, ExtrairUserId(Req));
       LPDFPath := LService.GerarDANFe(LChave);
     finally
       LService.Free;

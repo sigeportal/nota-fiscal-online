@@ -14,6 +14,7 @@ implementation
 uses
 	Auth.Controller,
 	Certificado.Controller,
+	Configuracao.Controller,
 	NFCe.Controller,
 	NFe.Controller,
 	Sefaz.Controller,
@@ -23,6 +24,7 @@ class procedure TAppRoutes.Routes;
 begin
 	TAuthController.Registrar;
 	TCertificadoController.Registrar;
+	TConfiguracaoController.Registrar;
 	TNFeController.Registrar;
 	TNFCeController.Registrar;
 	TSefazController.Registrar;

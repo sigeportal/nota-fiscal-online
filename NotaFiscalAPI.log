@@ -1,0 +1,10 @@
+[2026-03-14 10:51:11] [ERROR] Certificado.Controller.Upload | Exception: [Exception] [FireDAC][Phys][FB]file  is not a valid database
+[2026-03-14 10:51:32] [ERROR] Auth.Controller.Login | Exception: [Exception] [FireDAC][Phys][FB]file  is not a valid database
+[2026-03-14 10:53:35] [ERROR] Auth.Controller.Login | Exception: [Exception] [FireDAC][Phys][FB]Unable to complete network request to host "D".
+Failed to locate host machine.
+The specified name was not found in the hosts file or Domain Name Services.
+[2026-03-14 10:54:43] [ERROR] Auth.Controller.Login | Exception: [Exception] [FireDAC][Phys][FB]Unable to complete network request to host "localhost".
+Failed to establish a connection.
+[2026-03-14 10:54:58] [ERROR] Auth.Controller.Login | Exception: [Exception] [FireDAC][Phys][FB]Unable to complete network request to host "localhost".
+Failed to establish a connection.
+[2026-03-14 13:26:33] [INFO ] Usuario.Service: usuário "teste2" cadastrado (id=3)
