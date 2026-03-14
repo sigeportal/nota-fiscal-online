@@ -123,7 +123,6 @@ var
 	LQuery    : iQuery;
 	LCodigo   : Integer;
 	LCNPJNum  : string;
-	LStream   : TMemoryStream;
 begin
 	Result.Sucesso := False;
 	Result.Erro    := '';
@@ -174,39 +173,31 @@ begin
 	LQuery.Open;
 	LCodigo := LQuery.DataSet.Fields[0].AsInteger;
 
-	// Grava o novo certificado com os dados BLOB
-	LStream := TMemoryStream.Create;
-	try
-		LStream.WriteBuffer(LDados[0], Length(LDados));
-		LStream.Position := 0;
-
-		LQuery.Clear;
-		LQuery.Add('INSERT INTO CERTIFICADOS (');
-		LQuery.Add('  CER_CODIGO, CER_USU, CER_CNPJ, CER_DADOS,');
-		LQuery.Add('  CER_SENHA_HASH, CER_SENHA_CLARA, CER_ASSUNTO, CER_EMISSOR,');
-		LQuery.Add('  CER_VALIDADE_INI, CER_VALIDADE_FIM, CER_THUMBPRINT,');
-		LQuery.Add('  CER_ATIVO, CER_DATA_CRIACAO, CER_DATA_ATUALIZACAO');
-		LQuery.Add(') VALUES (');
-		LQuery.Add('  :CODIGO, :USU, :CNPJ, :DADOS,');
-		LQuery.Add('  :SENHA_HASH, :SENHA_CLARA, :ASSUNTO, :EMISSOR,');
-		LQuery.Add('  :VALINI, :VALFIM, :THUMB,');
-		LQuery.Add('  1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
-		LQuery.Add(')');
-		LQuery.AddParam('CODIGO', LCodigo);
-		LQuery.AddParam('USU', AUsuarioId);
-		LQuery.AddParam('CNPJ', LCNPJNum);
-		LQuery.AddParam('DADOS', LStream);
-		LQuery.AddParam('SENHA_HASH', LHashSenha);
-		LQuery.AddParam('SENHA_CLARA', ASenha);
-		LQuery.AddParam('ASSUNTO', LAssunto);
-		LQuery.AddParam('EMISSOR', LEmissor);
-		LQuery.AddParam('VALINI', LValIni);
-		LQuery.AddParam('VALFIM', LValFim);
-		LQuery.AddParam('THUMB', LThumb);
-		LQuery.ExecSQL;
-	finally
-		LStream.Free;
-	end;
+	// Grava o novo certificado com os dados em Base64
+	LQuery.Clear;
+	LQuery.Add('INSERT INTO CERTIFICADOS (');
+	LQuery.Add('  CER_CODIGO, CER_USU, CER_CNPJ, CER_DADOS,');
+	LQuery.Add('  CER_SENHA_HASH, CER_SENHA_CLARA, CER_ASSUNTO, CER_EMISSOR,');
+	LQuery.Add('  CER_VALIDADE_INI, CER_VALIDADE_FIM, CER_THUMBPRINT,');
+	LQuery.Add('  CER_ATIVO, CER_DATA_CRIACAO, CER_DATA_ATUALIZACAO');
+	LQuery.Add(') VALUES (');
+	LQuery.Add('  :CODIGO, :USU, :CNPJ, :DADOS,');
+	LQuery.Add('  :SENHA_HASH, :SENHA_CLARA, :ASSUNTO, :EMISSOR,');
+	LQuery.Add('  :VALINI, :VALFIM, :THUMB,');
+	LQuery.Add('  1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP');
+	LQuery.Add(')');
+	LQuery.AddParam('CODIGO', LCodigo);
+	LQuery.AddParam('USU', AUsuarioId);
+	LQuery.AddParam('CNPJ', LCNPJNum);
+	LQuery.AddParam('DADOS', ABase64);   // já está em Base64, grava diretamente
+	LQuery.AddParam('SENHA_HASH', LHashSenha);
+	LQuery.AddParam('SENHA_CLARA', ASenha);
+	LQuery.AddParam('ASSUNTO', LAssunto);
+	LQuery.AddParam('EMISSOR', LEmissor);
+	LQuery.AddParam('VALINI', LValIni);
+	LQuery.AddParam('VALFIM', LValFim);
+	LQuery.AddParam('THUMB', LThumb);
+	LQuery.ExecSQL;
 
 	// Preenche resultado
 	Result.Sucesso        := True;

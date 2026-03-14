@@ -72,6 +72,7 @@ type
 		procedure SalvarXML(const AChave, AConteudo, ATipo: string);
     function ExtrairDadosNFe(const chave: string; out CNPJ, NumSerie,
       NumeroNF: string): Boolean;
+    function BytesToRawByteString(const Bytes: TArray<Byte>): RawByteString;
 
 	public
 		constructor Create;
@@ -96,6 +97,7 @@ uses
 	ACBrBase,
 	ACBrUtil.Base,
 	Data.DB,
+	System.NetEncoding,
 	ACBrNFe.EventoClass,
   ACBrNFeDANFEClass;
 
@@ -190,12 +192,11 @@ end;
 
 function TACBrNFeService.CarregarCertificado(const ACNPJ: string): Boolean;
 var
-	LQuery  : iQuery;
-	LDados  : TBytes;
-	LSenha  : string;
-	LStream : TMemoryStream;
-	LCNPJNum: string;
-	LTmpFile: string;
+	LQuery   : iQuery;
+	LBase64  : string;
+	LSenha   : string;
+	LDados   : TBytes;
+	LCNPJNum : string;
 begin
 	Result   := False;
 	LCNPJNum := ACNPJ;
@@ -213,43 +214,54 @@ begin
 	LQuery.Open;
 
 	if LQuery.DataSet.IsEmpty then
+	begin
+		TLogger.Error('ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ %s', [LCNPJNum]);
 		Exit;
-
-	LSenha := LQuery.DataSet.FieldByName('CER_SENHA_CLARA').AsString;
-
-	// Lê o BLOB do certificado para um Stream
-	LStream := TMemoryStream.Create;
-	try
-		TBlobField(LQuery.DataSet.FieldByName('CER_DADOS')).SaveToStream(LStream);
-		LStream.Position := 0;
-		SetLength(LDados, LStream.Size);
-		LStream.ReadBuffer(LDados[0], LStream.Size);
-	finally
-		LStream.Free;
 	end;
 
-	if Length(LDados) = 0 then
+	LSenha  := LQuery.DataSet.FieldByName('CER_SENHA_CLARA').AsString;
+	LBase64 := LQuery.DataSet.FieldByName('CER_DADOS').AsString;
+
+	if LBase64.IsEmpty then
+	begin
+		TLogger.Error('ACBr.Service.CarregarCertificado: Campo CER_DADOS vazio para CNPJ %s', [LCNPJNum]);
 		Exit;
+	end;
 
-	// Salva o PFX em arquivo temporário para o ACBr carregar
-	LTmpFile := TPath.GetTempFileName + '.pfx';
+	// Decodifica o Base64 para bytes e passa via DadosPFX (sem arquivo temporário)
 	try
-		TFile.WriteAllBytes(LTmpFile, LDados);
-
-		FACBrNFe.Configuracoes.Certificados.ArquivoPFX  := LTmpFile;
-		FACBrNFe.Configuracoes.Certificados.Senha       := LSenha;
-		FACBrNFe.Configuracoes.Certificados.NumeroSerie := '';
-
-		Result := True;
+		LDados := TNetEncoding.Base64.DecodeStringToBytes(LBase64);
 	except
 		on E: Exception do
 		begin
-			if TFile.Exists(LTmpFile) then
-				TFile.Delete(LTmpFile);
-			raise;
+			TLogger.Error('ACBr.Service.CarregarCertificado: Erro ao decodificar Base64 - %s', [E.Message]);
+			Exit;
 		end;
 	end;
+
+	if Length(LDados) = 0 then
+	begin
+		TLogger.Error('ACBr.Service.CarregarCertificado: DadosPFX vazio após decodificação para CNPJ %s', [LCNPJNum]);
+		Exit;
+	end;
+
+	FACBrNFe.Configuracoes.Certificados.ArquivoPFX  := '';
+	FACBrNFe.Configuracoes.Certificados.NumeroSerie := '';
+	FACBrNFe.Configuracoes.Certificados.Senha       := LSenha;
+	FACBrNFe.Configuracoes.Certificados.DadosPFX    := BytesToRawByteString(LDados);
+
+	Result := True;
+	TLogger.Info('ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ %s', [LCNPJNum]);
 end;
+
+function TACBrNFeService.BytesToRawByteString(const Bytes: TArray<Byte>): RawByteString;
+begin
+  if Length(Bytes) > 0 then
+    SetString(Result, PAnsiChar(@Bytes[0]), Length(Bytes))
+  else
+    Result := '';
+end;
+
 
 function TACBrNFeService.ProximoNumeroNF(const ATabela, ACampoNF, ACampoCodigo, ASerie: string): Integer;
 var

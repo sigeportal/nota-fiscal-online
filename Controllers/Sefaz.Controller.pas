@@ -44,6 +44,7 @@ type
     class procedure Status(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class procedure Inutilizar(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class function  ExtrairCNPJ(Req: THorseRequest): string;
+    class function ExtrairUserId(Req: THorseRequest): Integer; static;
   end;
 
 implementation
@@ -63,6 +64,14 @@ begin
   Result := '';
   try
     Result := Req.Session<TJSONObject>.GetValue<string>('cnpj');
+  except end;
+end;
+
+class function TSefazController.ExtrairUserId(Req: THorseRequest): Integer;
+begin
+  Result := 0;
+  try
+    Result := Req.Session<TJSONObject>.GetValue<Integer>('user_id');
   except end;
 end;
 
@@ -100,7 +109,15 @@ begin
          .Status(THTTPStatus.BadRequest);
       Exit;
     end;
-
+    
+    if not LService.Configurar('', ExtrairUserId(Req)) then
+    begin
+      Res.Send<TJSONObject>(TResponseUtils.Error(
+        'Certificado não encontrado!', 400))
+         .Status(THTTPStatus.BadRequest);
+      Exit;
+    end;
+    
     LService := TACBrNFeService.Create;
     try
       // ConsultarStatusSefaz não requer certificado configurado

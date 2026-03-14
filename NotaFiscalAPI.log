@@ -8,3 +8,11 @@ Failed to establish a connection.
 [2026-03-14 10:54:58] [ERROR] Auth.Controller.Login | Exception: [Exception] [FireDAC][Phys][FB]Unable to complete network request to host "localhost".
 Failed to establish a connection.
 [2026-03-14 13:26:33] [INFO ] Usuario.Service: usuário "teste2" cadastrado (id=3)
+[2026-03-14 14:42:32] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-14 14:43:00] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] Nenhum arquivo de Schema encontrado na pasta: 
+D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\
+[2026-03-14 14:43:27] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] Nenhum arquivo de Schema encontrado na pasta: 
+D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\
+[2026-03-14 14:44:17] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !
+[2026-03-14 14:44:29] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !
+[2026-03-14 14:45:37] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !

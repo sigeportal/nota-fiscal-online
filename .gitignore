@@ -36,3 +36,6 @@ src/*.~*
 *.~*
 *.a
 *.stat
+
+Schemas
+data
