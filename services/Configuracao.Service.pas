@@ -165,7 +165,8 @@ begin
       if Assigned(LLista) then
         LLista.Free;
     end;
-
+    if LIsNovo then
+    	LCfg.Codigo := LCfg.GeraCodigo('CFG_CODIGO');
     // Preenche campos do body (somente os presentes)
     LCfg.Usuario := AUsuarioId;
 

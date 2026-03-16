@@ -110,17 +110,15 @@ begin
       Exit;
     end;
     
-    if not LService.Configurar('', ExtrairUserId(Req)) then
-    begin
-      Res.Send<TJSONObject>(TResponseUtils.Error(
-        'Certificado não encontrado!', 400))
-         .Status(THTTPStatus.BadRequest);
-      Exit;
-    end;
-    
     LService := TACBrNFeService.Create;
     try
-      // ConsultarStatusSefaz não requer certificado configurado
+    	if not LService.Configurar('', ExtrairUserId(Req)) then
+      begin
+        Res.Send<TJSONObject>(TResponseUtils.Error(
+          'Certificado não encontrado!', 400))
+           .Status(THTTPStatus.BadRequest);
+        Exit;
+      end;    
       LResult := LService.ConsultarStatusSefaz(UpperCase(LUF), LModelo);
     finally
       LService.Free;

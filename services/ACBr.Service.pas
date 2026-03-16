@@ -132,18 +132,20 @@ begin
 			FConfig := TModelConfiguracaoUsuario.Create(TDatabase.Connection);
 			FConfig.BuscaPorCampo('CFG_USU', FUsuarioId);
 			if FConfig.Codigo = 0 then
-				FreeAndNil(FConfig); // usuário sem configuração ainda — sem dados de RespTec
+				FreeAndNil(FConfig) // usuário sem configuração ainda — sem dados de RespTec
+      else
+      	FCNPJ := FConfig.EmitCNPJ;
 		end;
 
 		// Carrega o certificado do banco antes de configurar
-		if not CarregarCertificado(ACNPJ) then
+		if not CarregarCertificado(FCNPJ) then
 		begin
-			TLogger.Error('ACBr.Service: Certificado não encontrado para CNPJ %s', [ACNPJ]);
+			TLogger.Error('ACBr.Service: Certificado não encontrado para CNPJ %s', [FCNPJ]);
 			Exit;
 		end;
 		FConfigurado := True;
 		Result       := True;
-		TLogger.Info('ACBr.Service: Configurado com sucesso para CNPJ %s', [ACNPJ]);
+		TLogger.Info('ACBr.Service: Configurado com sucesso para CNPJ %s', [FCNPJ]);
 	except
 		on E: Exception do
 		begin
@@ -322,7 +324,35 @@ begin
 			Exit;
 		end;
 
-		FACBrNFe.NotasFiscais.GerarNFe;
+		// Log de debug: verificar nós principais antes de gerar o XML
+		try
+			if (Assigned(FACBrNFe) and (FACBrNFe.NotasFiscais.Count > 0) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+			begin
+				TLogger.Debug('ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=%d DetCount=%d PagCount=%d Emit.EnderEmit=%s Dest.EnderDest=%s InfAdic=%s infRespTec=%s',
+				  [FACBrNFe.NotasFiscais.Count,
+				   FACBrNFe.NotasFiscais.Items[0].NFe.Det.Count,
+				   FACBrNFe.NotasFiscais.Items[0].NFe.Pag.Count,
+				   BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit.EnderEmit), True),
+				   BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest.EnderDest), True),
+				   BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.InfAdic), True),
+				   BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.infRespTec), True)]);
+			end
+			else
+			begin
+				TLogger.Error('ACBr.Service.EmitirNFCe - estrutura NFe não inicializada antes de GerarNFe');
+			end;
+
+			// Geração do XML - envolvemos em try/except para capturar erros internos do ACBr
+			FACBrNFe.NotasFiscais.GerarNFe;
+		except
+			on E: Exception do
+			begin
+				Result.Sucesso := False;
+				Result.Erro := Format('Erro ao gerar XML da NFe: %s - %s', [E.ClassName, E.Message]);
+				TLogger.Error('ACBr.Service.EmitirNFe - GerarNFe exception: %s', [E.ToString]);
+				Exit;
+			end;
+		end;
 
 		LLote  := LSerie + IntToStr(LNumero);
 		Result := ExecutarEnvio(LLote);
@@ -344,7 +374,18 @@ var
 	LDestEnd: TJSONObject;
 begin
 	Result := False;
-	try
+		try
+				// Debug: log basic payload summary to help diagnose missing nodes
+				try
+					TLogger.Debug('ACBr.Service.MontarNFe - inicio: natOp=%s serie=%d ambiente=%s itens=%d pagamentos=%d',
+						[AJSON.GetValue<string>('natureza_operacao',''),
+						 AJSON.GetValue<Integer>('serie',1),
+						 AJSON.GetValue<string>('ambiente','2'),
+						 AJSON.GetValue<TJSONArray>('itens').Count,
+						 AJSON.GetValue<TJSONArray>('pagamentos').Count]);
+				except
+					// ignore logging errors
+				end;
 		with FACBrNFe.NotasFiscais.Add do
 		begin
 			LNFe := NFe;
@@ -363,10 +404,15 @@ begin
 			// Responsável Técnico (por usuário, via CONFIGURACOES_USUARIO)
 			if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty then
 			begin
-				LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
-				LNFe.infRespTec.xContato := FConfig.RespContato;
-				LNFe.infRespTec.email    := FConfig.RespEmail;
-				LNFe.infRespTec.fone     := FConfig.RespFone;
+				if Assigned(LNFe.infRespTec) then
+				begin
+					LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
+					LNFe.infRespTec.xContato := FConfig.RespContato;
+					LNFe.infRespTec.email    := FConfig.RespEmail;
+					LNFe.infRespTec.fone     := FConfig.RespFone;
+				end
+				else
+					TLogger.Warn('ACBr.Service.MontarNFe: infRespTec não inicializado; pulando responsavel tecnico');
 			end;
 
 			// Emitente - lido do banco pelo CNPJ
@@ -380,36 +426,51 @@ begin
 			LEmitEnd := AJSON.GetValue<TJSONObject>('emit_endereco');
 			if Assigned(LEmitEnd) then
 			begin
-				LNFe.Emit.EnderEmit.xLgr    := LEmitEnd.GetValue<string>('logradouro', '');
-				LNFe.Emit.EnderEmit.nro     := LEmitEnd.GetValue<string>('numero', 'SN');
-				LNFe.Emit.EnderEmit.xBairro := LEmitEnd.GetValue<string>('bairro', '');
-				LNFe.Emit.EnderEmit.xMun    := LEmitEnd.GetValue<string>('municipio', '');
-				LNFe.Emit.EnderEmit.UF      := LEmitEnd.GetValue<string>('uf', TAppConfig.UF);
-				LNFe.Emit.EnderEmit.CEP     := StrToInt(LEmitEnd.GetValue<string>('cep', '0'));
-				LNFe.Emit.EnderEmit.cMun    := LEmitEnd.GetValue<Integer>('codigo_municipio', 0);
+				if Assigned(LNFe.Emit) and Assigned(LNFe.Emit.EnderEmit) then
+				begin
+					LNFe.Emit.EnderEmit.xLgr    := LEmitEnd.GetValue<string>('logradouro', '');
+					LNFe.Emit.EnderEmit.nro     := LEmitEnd.GetValue<string>('numero', 'SN');
+					LNFe.Emit.EnderEmit.xBairro := LEmitEnd.GetValue<string>('bairro', '');
+					LNFe.Emit.EnderEmit.xMun    := LEmitEnd.GetValue<string>('municipio', '');
+					LNFe.Emit.EnderEmit.UF      := LEmitEnd.GetValue<string>('uf', TAppConfig.UF);
+					LNFe.Emit.EnderEmit.CEP     := StrToInt(LEmitEnd.GetValue<string>('cep', '0'));
+					LNFe.Emit.EnderEmit.cMun    := LEmitEnd.GetValue<Integer>('codigo_municipio', 0);
+				end
+				else
+					TLogger.Warn('ACBr.Service.MontarNFe: EnderEmit não inicializado; pulando endereco do emitente');
 			end;
 
 			// Destinatário
 			LDest := AJSON.GetValue<TJSONObject>('destinatario');
 			if Assigned(LDest) then
 			begin
-				LNFe.Dest.CNPJCPF := LDest.GetValue<string>('cnpj', '');
-				if LNFe.Dest.CNPJCPF.IsEmpty then
-					LNFe.Dest.CNPJCPF := LDest.GetValue<string>('cpf', '');
-				LNFe.Dest.xNome     := LDest.GetValue<string>('nome', '');
-				LNFe.Dest.IE        := LDest.GetValue<string>('ie', '');
-				LNFe.Dest.email     := LDest.GetValue<string>('email', '');
-				LDestEnd            := LDest.GetValue<TJSONObject>('endereco');
-				if Assigned(LDestEnd) then
+				if Assigned(LNFe.Dest) then
 				begin
-					LNFe.Dest.EnderDest.xLgr    := LDestEnd.GetValue<string>('logradouro', '');
-					LNFe.Dest.EnderDest.nro     := LDestEnd.GetValue<string>('numero', 'SN');
-					LNFe.Dest.EnderDest.xBairro := LDestEnd.GetValue<string>('bairro', '');
-					LNFe.Dest.EnderDest.xMun    := LDestEnd.GetValue<string>('municipio', '');
-					LNFe.Dest.EnderDest.UF      := LDestEnd.GetValue<string>('uf', '');
-					LNFe.Dest.EnderDest.CEP     := StrToInt(LDestEnd.GetValue<string>('cep', '0'));
-					LNFe.Dest.EnderDest.cMun    := LDestEnd.GetValue<Integer>('codigo_municipio', 0);
-				end;
+					LNFe.Dest.CNPJCPF := LDest.GetValue<string>('cnpj', '');
+					if LNFe.Dest.CNPJCPF.IsEmpty then
+						LNFe.Dest.CNPJCPF := LDest.GetValue<string>('cpf', '');
+					LNFe.Dest.xNome     := LDest.GetValue<string>('nome', '');
+					LNFe.Dest.IE        := LDest.GetValue<string>('ie', '');
+					LNFe.Dest.email     := LDest.GetValue<string>('email', '');
+					LDestEnd            := LDest.GetValue<TJSONObject>('endereco');
+					if Assigned(LDestEnd) then
+					begin
+						if Assigned(LNFe.Dest.EnderDest) then
+						begin
+							LNFe.Dest.EnderDest.xLgr    := LDestEnd.GetValue<string>('logradouro', '');
+							LNFe.Dest.EnderDest.nro     := LDestEnd.GetValue<string>('numero', 'SN');
+							LNFe.Dest.EnderDest.xBairro := LDestEnd.GetValue<string>('bairro', '');
+							LNFe.Dest.EnderDest.xMun    := LDestEnd.GetValue<string>('municipio', '');
+							LNFe.Dest.EnderDest.UF      := LDestEnd.GetValue<string>('uf', '');
+							LNFe.Dest.EnderDest.CEP     := StrToInt(LDestEnd.GetValue<string>('cep', '0'));
+							LNFe.Dest.EnderDest.cMun    := LDestEnd.GetValue<Integer>('codigo_municipio', 0);
+						end
+						else
+							TLogger.Warn('ACBr.Service.MontarNFe: EnderDest não inicializado; pulando endereco do destinatario');
+					end;
+				end
+				else
+					TLogger.Warn('ACBr.Service.MontarNFe: Dest não inicializado; pulando destinatario');
 			end;
 
 			// Itens
@@ -420,11 +481,39 @@ begin
 			// Pagamentos
 			AdicionarPagamentos(AJSON);
 
-			// Informações adicionais
-			LNFe.InfAdic.infCpl     := AJSON.GetValue<string>('info_complementar', '');
-			LNFe.InfAdic.infAdFisco := AJSON.GetValue<string>('info_fisco', '');
-		end;
-		Result := True;
+			// Informações adicionais (defensive)
+			try
+				if Assigned(LNFe.InfAdic) then
+				begin
+					LNFe.InfAdic.infCpl     := AJSON.GetValue<string>('info_complementar', '');
+					LNFe.InfAdic.infAdFisco := AJSON.GetValue<string>('info_fisco', '');
+				end
+				else
+					TLogger.Warn('ACBr.Service.MontarNFe: InfAdic não inicializado; pulando informações adicionais');
+			except
+				on E: Exception do
+				begin
+					TLogger.Error('ACBr.Service.MontarNFe - erro ao setar InfAdic: %s', [E.Message]);
+				end;
+			end;
+				end;
+
+				// Debug: resumo da nota criada (nós principais)
+				try
+					if (Assigned(FACBrNFe) and (FACBrNFe.NotasFiscais.Count > 0) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+					begin
+						TLogger.Debug('ACBr.Service.MontarNFe - pós-montagem: DetCount=%d PagCount=%d Emit.EnderEmit=%s Dest.EnderDest=%s InfAdic=%s infRespTec=%s',
+							[FACBrNFe.NotasFiscais.Items[0].NFe.Det.Count,
+							 FACBrNFe.NotasFiscais.Items[0].NFe.Pag.Count,
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit.EnderEmit), True),
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest.EnderDest), True),
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.InfAdic), True),
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.infRespTec), True)]);
+					end;
+				except
+				end;
+
+				Result := True;
 	except
 		on E: Exception do
 		begin
@@ -442,18 +531,28 @@ var
 	LDet     : TDetCollectionItem;
 	LAliqICMS: double;
 	LCST     : TCSTIcms;
+  CST: string;
+  LCSOSN: TCSOSNIcms;
 begin
 	LItens := AJSON.GetValue<TJSONArray>('itens');
 	if not Assigned(LItens) then
 		Exit;
 
+	// Defensive checks: ensure Nota/NFe exist before adding items
+	if not Assigned(FACBrNFe) or (FACBrNFe.NotasFiscais.Count = 0) or (not Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+	begin
+		TLogger.Error('ACBr.Service.AdicionarItensNFe: NFe node not initialized');
+		raise Exception.Create('NFe interno não inicializado. Verifique se MontarNFe criou a nota corretamente.');
+	end;
+
 	for I := 0 to LItens.Count - 1 do
 	begin
 		LItem := LItens.Items[I] as TJSONObject;
-		LDet  := FACBrNFe.NotasFiscais.Items[0].NFe.Det.New;
+		try
+		  LDet  := FACBrNFe.NotasFiscais.Items[0].NFe.Det.New;
 
-		LDet.Prod.nItem   := I + 1;
-		LDet.Prod.cProd   := LItem.GetValue<string>('codigo', IntToStr(I + 1));
+		  LDet.Prod.nItem   := I + 1;
+		  LDet.Prod.cProd   := LItem.GetValue<string>('codigo', IntToStr(I + 1));
 		LDet.Prod.cEAN    := LItem.GetValue<string>('ean', 'SEM GTIN');
 		LDet.Prod.xProd   := LItem.GetValue<string>('descricao', '');
 		LDet.Prod.NCM     := LItem.GetValue<string>('ncm', '');
@@ -469,11 +568,19 @@ begin
 		LDet.Prod.indTot  := itSomaTotalNFe;
 		LDet.Prod.CEST    := LItem.GetValue<string>('cest', '');
 
-		// ICMS
 		LAliqICMS              := LItem.GetValue<double>('aliq_icms', 0);
-		LCST                   := StrToCSTICMS(LItem.GetValue<string>('cst_icms', '102'));
+		// ICMS
+    CST := LItem.GetValue<string>('cst_icms', '102');
+    if CST.Trim.ToInteger > 2 then
+    begin
+      LCSOSN                   := StrToCSOSNIcms(CST);
+      LDet.Imposto.ICMS.CSOSN  := LCSOSN;
+    end else
+    begin
+      LCST                   := StrToCSTICMS(CST);
+      LDet.Imposto.ICMS.CST  := LCST;
+    end;
 		LDet.Imposto.ICMS.orig := TOrigemMercadoria.oeNacional;
-		LDet.Imposto.ICMS.CST  := LCST;
 		if LAliqICMS > 0 then
 		begin
 			LDet.Imposto.ICMS.modBC := TpcnDeterminacaoBaseIcms.dbiMargemValorAgregado;
@@ -493,7 +600,14 @@ begin
 		LDet.Imposto.COFINS.vBC     := 0;
 		LDet.Imposto.COFINS.pCOFINS := LItem.GetValue<double>('aliq_cofins', 0);
 		LDet.Imposto.COFINS.vCOFINS := 0;
-	end;
+				except
+					on E: Exception do
+					begin
+						TLogger.Error('ACBr.Service.AdicionarItensNFe - erro no item %d: %s | JSON: %s', [I, E.Message, LItem.ToString]);
+						raise;
+					end;
+				end;
+		end;
 end;
 
 // ============================================================
@@ -535,7 +649,18 @@ begin
 			Exit;
 		end;
 
-		FACBrNFe.NotasFiscais.GerarNFe;
+		// Geração do XML - envolvemos em try/except para capturar erros internos do ACBr
+		try
+			FACBrNFe.NotasFiscais.GerarNFe;
+		except
+			on E: Exception do
+			begin
+				Result.Sucesso := False;
+				Result.Erro := Format('Erro ao gerar XML da NFCe: %s - %s', [E.ClassName, E.Message]);
+				TLogger.Error('ACBr.Service.EmitirNFCe - GerarNFe exception: %s', [E.ToString]);
+				Exit;
+			end;
+		end;
 
 		LLote  := LSerie + IntToStr(LNumero);
 		Result := ExecutarEnvio(LLote);
@@ -556,7 +681,17 @@ var
 	LCPF    : string;
 begin
 	Result := False;
-	try
+		try
+				// Debug: resumo do payload para NFCe
+				try
+					TLogger.Debug('ACBr.Service.MontarNFCe - inicio: natOp=%s serie=%d ambiente=%s itens=%d pagamentos=%d',
+						[AJSON.GetValue<string>('natureza_operacao',''),
+						 AJSON.GetValue<Integer>('serie',1),
+						 AJSON.GetValue<string>('ambiente','2'),
+						 AJSON.GetValue<TJSONArray>('itens').Count,
+						 AJSON.GetValue<TJSONArray>('pagamentos').Count]);
+				except
+				end;
 		with FACBrNFe.NotasFiscais.Add do
 		begin
 			LNFe := NFe;
@@ -575,10 +710,15 @@ begin
 			// Responsável Técnico (por usuário, via CONFIGURACOES_USUARIO)
 			if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty then
 			begin
-				LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
-				LNFe.infRespTec.xContato := FConfig.RespContato;
-				LNFe.infRespTec.email    := FConfig.RespEmail;
-				LNFe.infRespTec.fone     := FConfig.RespFone;
+				if Assigned(LNFe.infRespTec) then
+				begin
+					LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
+					LNFe.infRespTec.xContato := FConfig.RespContato;
+					LNFe.infRespTec.email    := FConfig.RespEmail;
+					LNFe.infRespTec.fone     := FConfig.RespFone;
+				end
+				else
+					TLogger.Warn('ACBr.Service.MontarNFCe: infRespTec não inicializado; pulando responsavel tecnico');
 			end;
 
 			// Emitente
@@ -590,13 +730,18 @@ begin
 			LEmitEnd := AJSON.GetValue<TJSONObject>('emit_endereco');
 			if Assigned(LEmitEnd) then
 			begin
-				LNFe.Emit.EnderEmit.xLgr    := LEmitEnd.GetValue<string>('logradouro', '');
-				LNFe.Emit.EnderEmit.nro     := LEmitEnd.GetValue<string>('numero', 'SN');
-				LNFe.Emit.EnderEmit.xBairro := LEmitEnd.GetValue<string>('bairro', '');
-				LNFe.Emit.EnderEmit.xMun    := LEmitEnd.GetValue<string>('municipio', '');
-				LNFe.Emit.EnderEmit.UF      := LEmitEnd.GetValue<string>('uf', TAppConfig.UF);
-				LNFe.Emit.EnderEmit.CEP     := StrToInt(LEmitEnd.GetValue<string>('cep', '0'));
-				LNFe.Emit.EnderEmit.cMun    := LEmitEnd.GetValue<Integer>('codigo_municipio', 0);
+				if Assigned(LNFe.Emit) and Assigned(LNFe.Emit.EnderEmit) then
+				begin
+					LNFe.Emit.EnderEmit.xLgr    := LEmitEnd.GetValue<string>('logradouro', '');
+					LNFe.Emit.EnderEmit.nro     := LEmitEnd.GetValue<string>('numero', 'SN');
+					LNFe.Emit.EnderEmit.xBairro := LEmitEnd.GetValue<string>('bairro', '');
+					LNFe.Emit.EnderEmit.xMun    := LEmitEnd.GetValue<string>('municipio', '');
+					LNFe.Emit.EnderEmit.UF      := LEmitEnd.GetValue<string>('uf', TAppConfig.UF);
+					LNFe.Emit.EnderEmit.CEP     := StrToInt(LEmitEnd.GetValue<string>('cep', '0'));
+					LNFe.Emit.EnderEmit.cMun    := LEmitEnd.GetValue<Integer>('codigo_municipio', 0);
+				end
+				else
+					TLogger.Warn('ACBr.Service.MontarNFCe: EnderEmit não inicializado; pulando endereco do emitente');
 			end;
 
 			// Destinatário (opcional na NFCe)
@@ -612,8 +757,24 @@ begin
 
 			// Pagamentos
 			AdicionarPagamentos(AJSON);
-		end;
-		Result := True;
+				end;
+
+				// Debug: resumo da nota criada (nós principais) para NFCe
+				try
+					if (Assigned(FACBrNFe) and (FACBrNFe.NotasFiscais.Count > 0) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+					begin
+						TLogger.Debug('ACBr.Service.MontarNFCe - pós-montagem: DetCount=%d PagCount=%d Emit.EnderEmit=%s Dest.EnderDest=%s InfAdic=%s infRespTec=%s',
+							[FACBrNFe.NotasFiscais.Items[0].NFe.Det.Count,
+							 FACBrNFe.NotasFiscais.Items[0].NFe.Pag.Count,
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit.EnderEmit), True),
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest.EnderDest), True),
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.InfAdic), True),
+							 BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.infRespTec), True)]);
+					end;
+				except
+				end;
+
+				Result := True;
 	except
 		on E: Exception do
 		begin
@@ -630,19 +791,29 @@ var
 	I        : Integer;
 	LDet     : TDetCollectionItem;
 	LCST     : TCSTIcms;
+  LCSOSN   : TCSOSNIcms;
 	LAliqICMS: double;
+  CST: string;
 begin
 	LItens := AJSON.GetValue<TJSONArray>('itens');
 	if not Assigned(LItens) then
 		Exit;
 
+	// Defensive checks: ensure Nota/NFe exist before adding items
+	if not Assigned(FACBrNFe) or (FACBrNFe.NotasFiscais.Count = 0) or (not Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+	begin
+		TLogger.Error('ACBr.Service.AdicionarItensNFCe: NFe node not initialized');
+		raise Exception.Create('NFe interno não inicializado. Verifique se MontarNFCe criou a nota corretamente.');
+	end;
+
 	for I := 0 to LItens.Count - 1 do
 	begin
 		LItem := LItens.Items[I] as TJSONObject;
-		LDet  := FACBrNFe.NotasFiscais.Items[0].NFe.Det.New;
+		try
+		  LDet  := FACBrNFe.NotasFiscais.Items[0].NFe.Det.New;
 
-		LDet.Prod.nItem   := I + 1;
-		LDet.Prod.cProd   := LItem.GetValue<string>('codigo', IntToStr(I + 1));
+		  LDet.Prod.nItem   := I + 1;
+		  LDet.Prod.cProd   := LItem.GetValue<string>('codigo', IntToStr(I + 1));
 		LDet.Prod.cEAN    := LItem.GetValue<string>('ean', 'SEM GTIN');
 		LDet.Prod.xProd   := LItem.GetValue<string>('descricao', '');
 		LDet.Prod.NCM     := LItem.GetValue<string>('ncm', '');
@@ -659,10 +830,18 @@ begin
 		LDet.Prod.CEST    := LItem.GetValue<string>('cest', '');
 
 		// ICMS
-		LCST                   := StrToCSTICMS(LItem.GetValue<string>('cst_icms', '102'));
-		LDet.Imposto.ICMS.orig := TOrigemMercadoria.oeNacional;
-		LDet.Imposto.ICMS.CST  := LCST;
-
+    CST := LItem.GetValue<string>('cst_icms', '102');
+    if CST.Trim.ToInteger > 2 then
+    begin
+      LCSOSN                   := StrToCSOSNIcms(CST);
+      LDet.Imposto.ICMS.CSOSN  := LCSOSN;
+    end else
+    begin
+      LCST                   := StrToCSTICMS(CST);
+      LDet.Imposto.ICMS.CST  := LCST;
+    end;
+    
+    LDet.Imposto.ICMS.orig := TOrigemMercadoria.oeNacional;		
 		LAliqICMS := LItem.GetValue<double>('aliq_icms', 0);
 		if LAliqICMS > 0 then
 		begin
@@ -675,7 +854,14 @@ begin
 		// PIS / COFINS (sem incidência é cST 07 padrão no varejo)
 		LDet.Imposto.PIS.CST    := StrToCSTPIS(LItem.GetValue<string>('cst_pis', '07'));
 		LDet.Imposto.COFINS.CST := StrToCSTCOFINS(LItem.GetValue<string>('cst_cofins', '07'));
-	end;
+				except
+					on E: Exception do
+					begin
+						TLogger.Error('ACBr.Service.AdicionarItensNFCe - erro no item %d: %s | JSON: %s', [I, E.Message, LItem.ToString]);
+						raise;
+					end;
+				end;
+		end;
 end;
 
 procedure TACBrNFeService.AdicionarPagamentos(AJSON: TJSONObject);
@@ -689,6 +875,12 @@ begin
 	if not Assigned(LPgtos) then
 	begin
 		// Fallback: cria um pagamento único = valor total
+		if not Assigned(FACBrNFe) or (FACBrNFe.NotasFiscais.Count = 0) or (not Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+		begin
+			TLogger.Error('ACBr.Service.AdicionarPagamentos: NFe node not initialized');
+			raise Exception.Create('NFe interno não inicializado. Verifique se MontarNFe/MontarNFCe criou a nota corretamente.');
+		end;
+
 		LPag      := FACBrNFe.NotasFiscais.Items[0].NFe.Pag.New;
 		LPag.tPag := TpcnFormaPagamento.fpDinheiro;
 		LPag.vPag := AJSON.GetValue<double>('valor_total', 0);
@@ -698,6 +890,12 @@ begin
 	for I := 0 to LPgtos.Count - 1 do
 	begin
 		LPgto     := LPgtos.Items[I] as TJSONObject;
+		if not Assigned(FACBrNFe) or (FACBrNFe.NotasFiscais.Count = 0) or (not Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+		begin
+			TLogger.Error('ACBr.Service.AdicionarPagamentos: NFe node not initialized');
+			raise Exception.Create('NFe interno não inicializado. Verifique se MontarNFe/MontarNFCe criou a nota corretamente.');
+		end;
+
 		LPag      := FACBrNFe.NotasFiscais.Items[0].NFe.Pag.New;
 		LPag.tPag := TpcnFormaPagamento(LPgto.GetValue<Integer>('forma', 1));
 		LPag.vPag := LPgto.GetValue<double>('valor', 0);

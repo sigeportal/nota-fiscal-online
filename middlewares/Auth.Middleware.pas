@@ -29,7 +29,6 @@ begin
      LPath.StartsWith('/v1/auth/login') or
      LPath.StartsWith('/v1/login') or
      LPath.StartsWith('/v1/usuarios') or
-     LPath.StartsWith('/v1/sefaz/status') or
      LPath.StartsWith('/health') or
      LPath.StartsWith('/favicon') 
   then

@@ -16,3 +16,51 @@ D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\
 [2026-03-14 14:44:17] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !
 [2026-03-14 14:44:29] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !
 [2026-03-14 14:45:37] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !
+[2026-03-16 15:14:06] [INFO ] Auth.Service: Login bem-sucedido para portal (id=1)
+[2026-03-16 15:14:13] [INFO ] Auth.Service: Login bem-sucedido para portal (id=1)
+[2026-03-16 15:18:55] [INFO ] Auth.Service: Login bem-sucedido para portal (id=1)
+[2026-03-16 15:22:00] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 15:22:00] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 15:22:17] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 15:22:17] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 15:24:49] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 15:24:49] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 16:24:02] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 16:24:04] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 16:28:04] [WARN ] Auth.Service: Login falhou para usuário portal
+[2026-03-16 16:28:41] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-16 16:35:34] [INFO ] Configuracao.Service: configurações do usuário 3 salvas
+[2026-03-16 16:43:45] [INFO ] Configuracao.Service: configurações do usuário 3 salvas
+[2026-03-16 17:03:45] [ERROR] Certificado.Service.ExtrairInfo: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-16 17:04:01] [ERROR] Certificado.Service.ExtrairInfo: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 50856204 - error:0308010C:digital envelope routines::unsupported
+[2026-03-16 17:04:51] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 17:04:51] [WARN ] Auth.Service: Login falhou para usuário portal
+[2026-03-16 17:04:51] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 17:05:45] [ERROR] Certificado.Service.ExtrairInfo: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-16 17:07:02] [ERROR] Certificado.Service.ExtrairInfo: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 50856204 - error:0308010C:digital envelope routines::unsupported
+[2026-03-16 17:08:03] [ERROR] Certificado.Service.ExtrairInfo: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-16 17:10:45] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 17:10:45] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 17:16:13] [INFO ] Configuracao.Service: configurações do usuário 3 salvas
+[2026-03-16 17:33:23] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 17:33:23] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 17:34:31] [INFO ] Auth.Service: Login bem-sucedido para portal (id=1)
+[2026-03-16 17:35:49] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 17:35:49] [ERROR] ACBr.Service: Certificado não encontrado para CNPJ 
+[2026-03-16 17:40:11] [ERROR] ACBr.Service.CarregarCertificado: Nenhum certificado ativo para CNPJ 
+[2026-03-16 18:02:54] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] DadosPFX, ArquivoPFX, URLPFX ou NumeroSerie não especificados !
+[2026-03-16 18:03:48] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-16 18:03:51] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-16 18:04:01] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
