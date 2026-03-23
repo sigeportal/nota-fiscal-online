@@ -6,14 +6,14 @@
 
 # Base URL (ajustado para porta 9000)
 @baseUrl = http://localhost:9000
-@token = 
+@token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJOb3RhRmlzY2FsQVBJIiwic3ViIjoidGVzdGUyIiwiaWF0IjoxNzc0Mjc3NTI0LCJleHAiOjE3Nzk0NjE1MjQsInVzZXJfaWQiOjMsImNucGoiOiIwMDA3MzM2NTAwMDE0NiJ9.cgGvHgo8OLT7nq_qWTBG-pT9sskayagaFInrXRsKlWI
 
 ### Login
 POST {{baseUrl}}/v1/auth/login
 Content-Type: application/json
 
 {
-  "username": "portal",
+  "username": "teste2",
   "password": "portal3694"
 }
 
@@ -113,34 +113,36 @@ Authorization: Bearer {{token}}
 {
   "cnpj_emitente": "00073365000146",
   "natureza_operacao": "VENDA DE MERCADORIAS",
-  "serie": 1,
+  "serie": 2,
   "ambiente": 2,
   "emit_razao_social": "AUTO_PECAS_RIO_DOURADOS",
   "emit_nome_fantasia": "AUTO PECAS RIO",
-  "emit_ie": "123456789",
-  "emit_crt": 3,
+  "emit_ie": "282840770",
+  "emit_crt": 1,
+  "emit_cod_uf": 50,
+  "emit_cod_mun_ibge": 5003801,
   "emit_endereco": {
     "logradouro": "Rua Exemplo",
     "numero": "100",
     "bairro": "Centro",
-    "municipio": "Sao Paulo",
-    "uf": "SP",
-    "cep": "01001000",
-    "codigo_municipio": 3550308
+    "municipio": "Fátima do Sul",
+    "uf": "MS",
+    "cep": "79700000",
+    "codigo_municipio": 5003801
   },
   "destinatario": {
-    "cnpj": "12345678000199",
-    "nome": "Cliente Exemplo LTDA",
-    "ie": "987654321",
-    "email": "cliente@example.com",
+    "cnpj": "05557971000150",
+    "nome": "YUZURI & LOPES LTDA",
+    "ie": "283260408",
+    "email": "sigeportal@gmail.com",
     "endereco": {
-      "logradouro": "Av Cliente",
-      "numero": "500",
+      "logradouro": "AVENIDA 09 DE JULHO",
+      "numero": "1765",
       "bairro": "Bairro",
-      "municipio": "Sao Paulo",
-      "uf": "SP",
-      "cep": "01002000",
-      "codigo_municipio": 3550308
+      "municipio": "Fátima do Sul",
+      "uf": "MS",
+      "cep": "79700000",
+      "codigo_municipio": 5003801
     }
   },
   "itens": [
@@ -148,7 +150,7 @@ Authorization: Bearer {{token}}
       "codigo": "1001",
       "descricao": "Peça A",
       "ean": "SEM GTIN",
-      "ncm": "87082900",
+      "ncm": "0101",
       "cfop": "5102",
       "unidade": "UN",
       "quantidade": 2,
@@ -157,9 +159,9 @@ Authorization: Bearer {{token}}
       "cest": "",
       "cst_icms": "102",
       "aliq_icms": 0,
-      "cst_pis": "07",
+      "cst_pis": "99",
       "aliq_pis": 0,
-      "cst_cofins": "07",
+      "cst_cofins": "99",
       "aliq_cofins": 0,
       "desconto": 0
     },
@@ -167,7 +169,7 @@ Authorization: Bearer {{token}}
       "codigo": "1002",
       "descricao": "Peça B",
       "ean": "SEM GTIN",
-      "ncm": "87082900",
+      "ncm": "0101",
       "cfop": "5102",
       "unidade": "UN",
       "quantidade": 1,
@@ -176,9 +178,9 @@ Authorization: Bearer {{token}}
       "cest": "",
       "cst_icms": "102",
       "aliq_icms": 0,
-      "cst_pis": "07",
+      "cst_pis": "99",
       "aliq_pis": 0,
-      "cst_cofins": "07",
+      "cst_cofins": "99",
       "aliq_cofins": 0,
       "desconto": 0
     }
