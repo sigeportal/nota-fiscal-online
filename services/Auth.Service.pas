@@ -87,7 +87,7 @@ begin
   Result.Username   := LQuery.DataSet.FieldByName('USU_USERNAME').AsString;
   Result.CNPJ       := LQuery.DataSet.FieldByName('USU_CNPJ').AsString;
   Result.RazaoSocial := LQuery.DataSet.FieldByName('USU_RAZAO_SOCIAL').AsString;
-  Result.Token      := TJWTUtils.GenerateToken(Result.UserId, Result.Username);
+  Result.Token      := TJWTUtils.GenerateToken(Result.UserId, Result.Username, Result.CNPJ);
   Result.Sucesso    := True;
 
   TLogger.Info('Auth.Service: Login bem-sucedido para %s (id=%d)', [Result.Username, Result.UserId]);

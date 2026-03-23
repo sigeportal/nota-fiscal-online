@@ -64,3 +64,70 @@ Error: 310378599 - error:12800067:DSO support routines::could not load the share
 [2026-03-16 18:04:01] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] Erro ao ler informações do Certificado.
 Provavelmente a senha está errada
 Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-19 16:24:01] [WARN ] Auth.Service: Login falhou para usuário portal
+[2026-03-19 16:25:02] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-19 16:29:17] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:29:17] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:29:25] [ERROR] ACBr.Service.ConsultarStatusSefaz | Exception: [EACBrDFeException] Nenhum arquivo de Schema encontrado na pasta: 
+D:\PROJETOS\NotaFiscal\nota-fiscal-online\Schemas\NFe\
+[2026-03-19 16:33:47] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:33:47] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:35:46] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-19 16:36:19] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:36:19] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:37:34] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:37:34] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:37:34] [DEBUG] ACBr.Service.MontarNFe - inicio: natOp=VENDA DE MERCADORIAS serie=1 ambiente=2 itens=2 pagamentos=1
+[2026-03-19 16:37:34] [DEBUG] ACBr.Service.MontarNFe - pós-montagem: DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:37:34] [DEBUG] ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=1 DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:37:49] [ERROR] ACBr.Service.ExecutarEnvio | Exception: [EACBrNFeException] Falha na validação dos dados da nota: 1
+TAG:%TAGNIVEL% ID:B02/cUF(Código IBGE da UF) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B12/cMunFG(Código do Município FG) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B24/tpAmb(Identificação do Ambiente) - Nenhum valor informado.
+TAG:%TAGNIVEL% ID:E02/CNPJ(CNPJ) - Conteúdo inválido.
+
+ --> 1840 - Element '{http://www.portalfiscal.inf.br/nfe}CRT': [facet 'enumeration'] The value '4' is not an element of the set {'1', '2', '3'}.
+
+[2026-03-19 16:39:21] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:39:21] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:40:35] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:40:35] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:40:35] [DEBUG] ACBr.Service.MontarNFe - inicio: natOp=VENDA DE MERCADORIAS serie=1 ambiente=2 itens=2 pagamentos=1
+[2026-03-19 16:40:35] [DEBUG] ACBr.Service.MontarNFe - pós-montagem: DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:40:35] [DEBUG] ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=1 DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:40:46] [ERROR] ACBr.Service.ExecutarEnvio | Exception: [EACBrNFeException] Falha na validação dos dados da nota: 1
+TAG:%TAGNIVEL% ID:B02/cUF(Código IBGE da UF) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B12/cMunFG(Código do Município FG) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B24/tpAmb(Identificação do Ambiente) - Nenhum valor informado.
+TAG:%TAGNIVEL% ID:E02/CNPJ(CNPJ) - Conteúdo inválido.
+
+ --> 1840 - Element '{http://www.portalfiscal.inf.br/nfe}CRT': [facet 'enumeration'] The value '4' is not an element of the set {'1', '2', '3'}.
+
+[2026-03-19 16:45:59] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-19 16:50:05] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:50:05] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:50:05] [DEBUG] ACBr.Service.MontarNFe - inicio: natOp=VENDA DE MERCADORIAS serie=1 ambiente=2 itens=2 pagamentos=1
+[2026-03-19 16:50:05] [DEBUG] ACBr.Service.MontarNFe - pós-montagem: DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:50:05] [DEBUG] ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=1 DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:50:07] [ERROR] ACBr.Service.ExecutarEnvio | Exception: [EACBrNFeException] Falha na validação dos dados da nota: 1
+TAG:%TAGNIVEL% ID:B02/cUF(Código IBGE da UF) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B12/cMunFG(Código do Município FG) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B24/tpAmb(Identificação do Ambiente) - Nenhum valor informado.
+TAG:%TAGNIVEL% ID:E02/CNPJ(CNPJ) - Conteúdo inválido.
+
+ --> 1840 - Element '{http://www.portalfiscal.inf.br/nfe}CRT': [facet 'enumeration'] The value '4' is not an element of the set {'1', '2', '3'}.
+
+[2026-03-19 16:50:52] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-19 16:51:34] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-19 16:51:34] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-19 16:52:00] [DEBUG] ACBr.Service.MontarNFe - inicio: natOp=VENDA DE MERCADORIAS serie=1 ambiente=2 itens=2 pagamentos=1
+[2026-03-19 16:52:53] [DEBUG] ACBr.Service.MontarNFe - pós-montagem: DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:52:58] [DEBUG] ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=1 DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-19 16:53:07] [ERROR] ACBr.Service.ExecutarEnvio | Exception: [EACBrNFeException] Falha na validação dos dados da nota: 1
+TAG:%TAGNIVEL% ID:B02/cUF(Código IBGE da UF) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B12/cMunFG(Código do Município FG) - Conteúdo inválido.
+TAG:%TAGNIVEL% ID:B24/tpAmb(Identificação do Ambiente) - Nenhum valor informado.
+TAG:%TAGNIVEL% ID:E02/CNPJ(CNPJ) - Conteúdo inválido.
+
+ --> 1840 - Element '{http://www.portalfiscal.inf.br/nfe}CRT': [facet 'enumeration'] The value '4' is not an element of the set {'1', '2', '3'}.
+

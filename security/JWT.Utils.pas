@@ -1,4 +1,4 @@
-unit JWT.Utils;
+﻿unit JWT.Utils;
 
 {
   Utilitários JWT para geração e validação de tokens
@@ -16,7 +16,7 @@ type
   TJWTUtils = class
   public
     /// <summary>Gera um token JWT com o subject informado (login do usuário)</summary>
-    class function GenerateToken(const AUserId: Integer; const ALogin: string): string;
+    class function GenerateToken(const AUserId: Integer; const ALogin, CNPJ: string): string;
     /// <summary>Retorna o subject (login) do token</summary>
     class function GetSubject(const AToken: string): string;
   end;
@@ -30,7 +30,7 @@ uses
 
 { TJWTUtils }
 
-class function TJWTUtils.GenerateToken(const AUserId: Integer; const ALogin: string): string;
+class function TJWTUtils.GenerateToken(const AUserId: Integer; const ALogin, CNPJ: string): string;
 var
   LJWT  : TJWT;
   LHours: Integer;
@@ -47,6 +47,7 @@ begin
     LJWT.Claims.Expiration := IncHour(Now, LHours);
     // Claim customizado com o id do usuário
     LJWT.Claims.JSON.AddPair('user_id', TJSONNumber.Create(AUserId));
+    LJWT.Claims.JSON.AddPair('cnpj', CNPJ);
 
     Result := TJOSE.SHA256CompactToken(TAppConfig.JWTSecret, LJWT);
   finally
