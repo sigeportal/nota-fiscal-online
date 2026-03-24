@@ -25,6 +25,7 @@ uses
   System.JSON,
   System.IOUtils,
   System.DateUtils,
+  System.RegularExpressions,
   ACBrNFe,
   App.Config,
   Logger.Utils,
@@ -162,7 +163,7 @@ begin
     Geral.ValidarDigest := False;
     WebServices.SSLType := LT_TLSv1_2;
     WebServices.Tentativas := 5;
-    WebServices.TimeOut := 5000;
+    WebServices.TimeOut := 10000;
     Geral.VersaoQRCode := veqr200;
     Geral.VersaoDF := ve400;
 
@@ -179,7 +180,12 @@ begin
       Geral.ModeloDF := moNFe;
 
     WebServices.UF := TAppConfig.UF;
-    WebServices.Ambiente := taHomologacao; // será substituído pelo JSON
+
+    // Ambiente lido da variável AMBIENTE_PRODUCAO (0=homolog, 1=producao)
+    if TAppConfig.AmbienteProducao then
+      WebServices.Ambiente := taProducao
+    else
+      WebServices.Ambiente := taHomologacao;
 
     Arquivos.PathSchemas := TAppConfig.AcbrSchemas;
     Arquivos.PathSalvar := TAppConfig.AcbrXmlDir;
@@ -324,16 +330,20 @@ begin
     end;
 
     // Log de debug: verificar nós principais antes de gerar o XML
+    if (Assigned(FACBrNFe) and (FACBrNFe.NotasFiscais.Count > 0) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
+    begin
+      TLogger.Debug('ACBr.Service.EmitirNFe - pré-GerarNFe: Notas=%d DetCount=%d PagCount=%d Emit.EnderEmit=%s Dest.EnderDest=%s InfAdic=%s infRespTec=%s',
+        [FACBrNFe.NotasFiscais.Count,
+         FACBrNFe.NotasFiscais.Items[0].NFe.Det.Count,
+         FACBrNFe.NotasFiscais.Items[0].NFe.Pag.Count,
+         BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit.EnderEmit), True),
+         BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest.EnderDest), True),
+         BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.InfAdic), True),
+         BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.infRespTec), True)]);
+    end;
+
+    // Geração do XML
     try
-      if (Assigned(FACBrNFe) and (FACBrNFe.NotasFiscais.Count > 0) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe)) then
-      begin
-        TLogger.Debug('ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=%d DetCount=%d PagCount=%d Emit.EnderEmit=%s Dest.EnderDest=%s InfAdic=%s infRespTec=%s', [FACBrNFe.NotasFiscais.Count, FACBrNFe.NotasFiscais.Items[0].NFe.Det.Count, FACBrNFe.NotasFiscais.Items[0].NFe.Pag.Count, BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Emit.EnderEmit), True), BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest) and Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.Dest.EnderDest), True), BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.InfAdic), True), BoolToStr(Assigned(FACBrNFe.NotasFiscais.Items[0].NFe.infRespTec), True)]);
-      end
-      else
-      begin
-        TLogger.Error('ACBr.Service.EmitirNFCe - estrutura NFe não inicializada antes de GerarNFe');
-      end;
-      // Geração do XML - envolvemos em try/except para capturar erros internos do ACBr
       FACBrNFe.NotasFiscais.GerarNFe;
     except
       on E: Exception do
@@ -394,18 +404,17 @@ begin
       LNFe.Ide.dSaiEnt := Now;
       LNFe.Ide.hSaiEnt := Now;
       LNFe.Ide.hSaiEnt := Now;
-      // Responsável Técnico (por usuário, via CONFIGURACOES_USUARIO)
-      if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty then
+      // Responsável Técnico (só preenche se todos os campos obrigatórios existirem)
+      if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty
+         and not FConfig.RespContato.IsEmpty and not FConfig.RespEmail.IsEmpty then
       begin
         if Assigned(LNFe.infRespTec) then
         begin
-          LNFe.infRespTec.CNPJ := FConfig.RespCNPJ;
+          LNFe.infRespTec.CNPJ     := FConfig.RespCNPJ;
           LNFe.infRespTec.xContato := FConfig.RespContato;
-          LNFe.infRespTec.email := FConfig.RespEmail;
-          LNFe.infRespTec.fone := FConfig.RespFone;
-        end
-        else
-          TLogger.Warn('ACBr.Service.MontarNFe: infRespTec não inicializado; pulando responsavel tecnico');
+          LNFe.infRespTec.email    := FConfig.RespEmail;
+          LNFe.infRespTec.fone     := FConfig.RespFone;
+        end;
       end;
 
       // Emitente - lido do banco pelo CNPJ
@@ -443,20 +452,28 @@ begin
           if LNFe.Dest.CNPJCPF.IsEmpty then
             LNFe.Dest.CNPJCPF := LDest.GetValue<string>('cpf', '');
           LNFe.Dest.xNome := LDest.GetValue<string>('nome', '');
-          LNFe.Dest.IE := LDest.GetValue<string>('ie', '');
+          LNFe.Dest.IE    := LDest.GetValue<string>('ie', '');
           LNFe.Dest.email := LDest.GetValue<string>('email', '');
+
+          // indIEDest é obrigatório na NFe 4.00:
+          //   1 = Contribuinte ICMS  2 = Contribuinte isento  9 = Não contribuinte
+          if LNFe.Dest.IE.IsEmpty then
+            LNFe.Dest.indIEDest := inNaoContribuinte
+          else
+            LNFe.Dest.indIEDest := inContribuinte;
+
           LDestEnd := LDest.GetValue<TJSONObject>('endereco');
           if Assigned(LDestEnd) then
           begin
             if Assigned(LNFe.Dest.EnderDest) then
             begin
-              LNFe.Dest.EnderDest.xLgr := LDestEnd.GetValue<string>('logradouro', '');
-              LNFe.Dest.EnderDest.nro := LDestEnd.GetValue<string>('numero', 'SN');
+              LNFe.Dest.EnderDest.xLgr   := LDestEnd.GetValue<string>('logradouro', '');
+              LNFe.Dest.EnderDest.nro     := LDestEnd.GetValue<string>('numero', 'SN');
               LNFe.Dest.EnderDest.xBairro := LDestEnd.GetValue<string>('bairro', '');
-              LNFe.Dest.EnderDest.xMun := LDestEnd.GetValue<string>('municipio', '');
-              LNFe.Dest.EnderDest.UF := LDestEnd.GetValue<string>('uf', '');
-              LNFe.Dest.EnderDest.CEP := StrToInt(LDestEnd.GetValue<string>('cep', '0'));
-              LNFe.Dest.EnderDest.cMun := LDestEnd.GetValue<Integer>('codigo_municipio', 0);
+              LNFe.Dest.EnderDest.xMun    := LDestEnd.GetValue<string>('municipio', '');
+              LNFe.Dest.EnderDest.UF      := LDestEnd.GetValue<string>('uf', '');
+              LNFe.Dest.EnderDest.CEP     := StrToInt(LDestEnd.GetValue<string>('cep', '0'));
+              LNFe.Dest.EnderDest.cMun    := LDestEnd.GetValue<Integer>('codigo_municipio', 0);
             end
             else
               TLogger.Warn('ACBr.Service.MontarNFe: EnderDest não inicializado; pulando endereco do destinatario');
@@ -1039,10 +1056,29 @@ end;
 // CONSULTA STATUS SEFAZ
 // ============================================================
 
+// Extrai o valor de uma tag XML simples do XML bruto.
+// Ex: ExtractXMLTag('<cStat>107</cStat>', 'cStat') → '107'
+function ExtractXMLTag(const AXML, ATag: string): string;
+var
+  LMatch: TMatch;
+begin
+  Result := '';
+  LMatch := TRegEx.Match(AXML, '<' + ATag + '[^>]*>([^<]+)</' + ATag + '>',
+    [roIgnoreCase]);
+  if LMatch.Success and (LMatch.Groups.Count > 1) then
+    Result := Trim(LMatch.Groups[1].Value);
+end;
+
 function TACBrNFeService.ConsultarStatusSefaz(const AUF: string; AModelo: Integer): TResultadoEmissao;
+var
+  LRetornoXML: string;
+  LCStat: string;
+  LXMotivo: string;
 begin
   Result.Sucesso := False;
-  Result.Erro := '';
+  Result.Erro    := '';
+  Result.CStat   := 0;
+  Result.Motivo  := '';
 
   try
     if AModelo = 65 then
@@ -1053,16 +1089,69 @@ begin
     if not AUF.IsEmpty then
       FACBrNFe.Configuracoes.WebServices.UF := AUF;
 
-    FACBrNFe.WebServices.StatusServico.Executar;
+    TLogger.Debug('ACBr.Service.ConsultarStatusSefaz - Config: UF=%s Ambiente=%d Schemas=%s XmlDir=%s',
+      [FACBrNFe.Configuracoes.WebServices.UF,
+       Integer(FACBrNFe.Configuracoes.WebServices.Ambiente),
+       TAppConfig.AcbrSchemas,
+       TAppConfig.AcbrXmlDir]);
 
-    Result.CStat := FACBrNFe.WebServices.StatusServico.CStat;
+    try
+      FACBrNFe.WebServices.StatusServico.Executar;
+    except
+      on E: Exception do
+      begin
+        TLogger.Error('ACBr.Service.ConsultarStatusSefaz - Exception em StatusServico: %s', [E.ToString]);
+        Result.Erro := E.Message;
+        Exit;
+      end;
+    end;
+
+    // --- Tentar via propriedades do componente ACBr (caminho normal) ---
+    Result.CStat  := FACBrNFe.WebServices.StatusServico.CStat;
     Result.Motivo := FACBrNFe.WebServices.StatusServico.XMotivo;
+
+    // --- Fallback: extrair diretamente do XML bruto quando ACBr retorna 0 ---
+    // Isso acontece quando o namespace do envelope SOAP não bate com o esperado
+    // pelo parser interno do ACBr (ex: NFeStatusServico4 vs NfeStatusServico4).
+    if Result.CStat = 0 then
+    begin
+      LRetornoXML := FACBrNFe.WebServices.StatusServico.RetornoWS;
+
+      TLogger.Debug('ACBr.Service.ConsultarStatusSefaz - RetornoXML bruto (0..800): %s',
+        [Copy(LRetornoXML, 1, 800)]);
+
+      if not LRetornoXML.IsEmpty then
+      begin
+        LCStat   := ExtractXMLTag(LRetornoXML, 'cStat');
+        LXMotivo := ExtractXMLTag(LRetornoXML, 'xMotivo');
+
+        if not LCStat.IsEmpty then
+        begin
+          TryStrToInt(LCStat, Result.CStat);
+          Result.Motivo := LXMotivo;
+          TLogger.Info('ACBr.Service.ConsultarStatusSefaz - cStat extraído do XML: %d (%s)',
+            [Result.CStat, Result.Motivo]);
+        end
+        else
+          TLogger.Error('ACBr.Service.ConsultarStatusSefaz - cStat não encontrado no XML bruto');
+      end
+      else
+        TLogger.Error('ACBr.Service.ConsultarStatusSefaz - RetornoWS vazio após Executar');
+    end
+    else
+      TLogger.Info('ACBr.Service.ConsultarStatusSefaz - CStat via ACBr: %d (%s)',
+        [Result.CStat, Result.Motivo]);
+
     Result.Sucesso := Result.CStat = 107; // 107 = Serviço em Operação
+
+    if not Result.Sucesso then
+      Result.Erro := Format('cStat=%d: %s', [Result.CStat, Result.Motivo]);
+
   except
     on E: Exception do
     begin
       Result.Sucesso := False;
-      Result.Erro := E.Message;
+      Result.Erro    := E.Message;
       TLogger.Error('ACBr.Service.ConsultarStatusSefaz', E);
     end;
   end;
@@ -1137,53 +1226,167 @@ end;
 // DANFE / XML
 // ============================================================
 
-function TACBrNFeService.GerarDANFe(const AChave: string): string;
+// Resolve o XML da NFe/NFCe:
+//   1. Tenta /tmp/nfe/<chave>-nfe.xml (cache da mesma sessão)
+//   2. Busca no banco (NOT_XML_NFE / NFC_XML_NFCE)
+//   3. Devolve '' se não encontrar
+function TACBrNFeService.ObterXML(const AChave: string): string;
 var
-  LXMLPath: string;
-  LPDFPath: string;
-  LDANFCe: TACBrNFeDANFCEClass;
+  LTmpPath: string;
+  LQuery  : iQuery;
+  LTabela, LColXML, LColChave: string;
 begin
   Result := '';
-  LXMLPath := TPath.Combine(TAppConfig.AcbrXmlDir, AChave + '-nfe.xml');
-  if not TFile.Exists(LXMLPath) then
-    Exit;
 
-  LPDFPath := TPath.Combine(TAppConfig.AcbrXmlDir, AChave + '.pdf');
-  LDANFCe := TACBrNFeDANFCEClass.Create(nil);
+  // 1. Cache /tmp (disponível na mesma instância Cloud Run)
+  LTmpPath := TPath.Combine('/tmp/nfe', AChave + '-nfe.xml');
+  if TFile.Exists(LTmpPath) then
+  begin
+    Result := TFile.ReadAllText(LTmpPath, TEncoding.UTF8);
+    Exit;
+  end;
+
+  // 2. Banco de dados — fonte definitiva
+  // Detecta modelo pelo tamanho da chave (44 dígitos) e posição 21-22 (55=NFe, 65=NFCe)
+  if (Length(AChave) = 44) and (Copy(AChave, 21, 2) = '65') then
+  begin
+    LTabela  := 'NFC';
+    LColXML  := 'NFC_XML_NFCE';
+    LColChave := 'NFC_CHAVE_NFCE';
+  end
+  else
+  begin
+    LTabela  := 'NOTAS_FISCAIS';
+    LColXML  := 'NOT_XML_NFE';
+    LColChave := 'NOT_CHAVE_NFE';
+  end;
+
   try
-    LDANFCe.NomeDocumento := LXMLPath;
-    // LDANFCe.Imprimir(LPDFPath);
-    Result := LPDFPath;
-  finally
-    LDANFCe.Free;
+    LQuery := TDatabase.Query;
+    LQuery.Clear;
+    LQuery.Add('SELECT ' + LColXML + ' FROM ' + LTabela);
+    LQuery.Add(' WHERE ' + LColChave + ' = :CHAVE');
+    LQuery.AddParam('CHAVE', AChave);
+    LQuery.Open;
+    if not LQuery.DataSet.IsEmpty then
+      Result := LQuery.DataSet.Fields[0].AsString;
+  except
+    on E: Exception do
+      TLogger.Error('ACBr.Service.ObterXML: %s', [E.Message]);
   end;
 end;
 
-function TACBrNFeService.ObterXML(const AChave: string): string;
+function TACBrNFeService.GerarDANFe(const AChave: string): string;
 var
-  LXMLPath: string;
+  LXMLContent: string;
+  LTmpDir    : string;
+  LXMLPath   : string;
+  LPDFPath   : string;
 begin
   Result := '';
-  LXMLPath := TPath.Combine(TAppConfig.AcbrXmlDir, AChave + '-nfe.xml');
-  if TFile.Exists(LXMLPath) then
-    Result := TFile.ReadAllText(LXMLPath, TEncoding.UTF8);
+
+  // Resolve o XML (cache /tmp ou banco)
+  LXMLContent := ObterXML(AChave);
+  if LXMLContent.IsEmpty then
+  begin
+    TLogger.Warn('ACBr.Service.GerarDANFe: XML não encontrado para chave %s', [AChave]);
+    Exit;
+  end;
+
+  // Grava em /tmp para o ACBr ler do disco
+  LTmpDir  := '/tmp/nfe';
+  LXMLPath := TPath.Combine(LTmpDir, AChave + '-nfe.xml');
+  LPDFPath := TPath.Combine(LTmpDir, AChave + '-danfe.pdf');
+
+  try
+    if not TDirectory.Exists(LTmpDir) then
+      TDirectory.CreateDirectory(LTmpDir);
+
+    if not TFile.Exists(LXMLPath) then
+      TFile.WriteAllText(LXMLPath, LXMLContent, TEncoding.UTF8);
+
+    // TODO: implementar geração real do DANFE quando a lib estiver disponível
+    // FACBrNFe.DANFE.NomeArquivo := LPDFPath;
+    // FACBrNFe.NotasFiscais.LoadFromFile(LXMLPath);
+    // FACBrNFe.DANFE.Imprimir;
+    // Result := LPDFPath;
+
+    TLogger.Info('ACBr.Service.GerarDANFe: XML disponível em %s (PDF pendente de implementação)', [LXMLPath]);
+    Result := LXMLPath; // por ora retorna path do XML
+  except
+    on E: Exception do
+      TLogger.Error('ACBr.Service.GerarDANFe: %s', [E.Message]);
+  end;
 end;
+
 
 procedure TACBrNFeService.SalvarXML(const AChave, AConteudo, ATipo: string);
 var
-  LPath: string;
+  LTmpDir : string;
+  LTmpPath: string;
+  LTabela : string;
+  LColXML : string;
+  LColChave: string;
+  LQuery  : iQuery;
 begin
   if AChave.IsEmpty or AConteudo.IsEmpty then
     Exit;
 
+  // ------------------------------------------------------------------
+  // 1. Persiste no banco de dados (Firebird) — armazenamento definitivo.
+  //    No Cloud Run o filesystem é efêmero; o banco é o único storage
+  //    permanente sem custo adicional.
+  //
+  //    Estrutura esperada:
+  //      NOTAS_FISCAIS.NOT_XML_NFE  BLOB SUB_TYPE 1  (NFe modelo 55)
+  //      NFC.NFC_XML_NFCE           BLOB SUB_TYPE 1  (NFCe modelo 65)
+  //
+  //    Script de migração: dist/scripts/migrate-add-xml-blob.sql
+  // ------------------------------------------------------------------
+  if ATipo = 'nfe' then
+  begin
+    LTabela  := 'NOTAS_FISCAIS';
+    LColXML  := 'NOT_XML_NFE';
+    LColChave := 'NOT_CHAVE_NFE';
+  end
+  else
+  begin
+    LTabela  := 'NFC';
+    LColXML  := 'NFC_XML_NFCE';
+    LColChave := 'NFC_CHAVE_NFCE';
+  end;
+
   try
-    ForceDirectories(TAppConfig.AcbrXmlDir);
-    LPath := TPath.Combine(TAppConfig.AcbrXmlDir, AChave + '-' + ATipo + '.xml');
-    TFile.WriteAllText(LPath, AConteudo, TEncoding.UTF8);
-    TLogger.Info('ACBr.Service: XML salvo em %s', [LPath]);
+    LQuery := TDatabase.Query;
+    LQuery.Clear;
+    LQuery.Add('UPDATE ' + LTabela);
+    LQuery.Add('   SET ' + LColXML + ' = :XML');
+    LQuery.Add(' WHERE ' + LColChave + ' = :CHAVE');
+    LQuery.AddParam('CHAVE', AChave);
+    LQuery.AddParam('XML',   AConteudo);
+    LQuery.ExecSQL;
+    TLogger.Info('ACBr.Service.SalvarXML: XML da %s gravado no banco (chave=%s)', [ATipo, AChave]);
   except
     on E: Exception do
-      TLogger.Error('ACBr.Service.SalvarXML: %s', [E.Message]);
+      TLogger.Error('ACBr.Service.SalvarXML - banco: %s', [E.Message]);
+      // Não re-raise: falha no save não deve cancelar a nota já autorizada
+  end;
+
+  // ------------------------------------------------------------------
+  // 2. Cópia temporária em /tmp — usada apenas para gerar o DANFE na
+  //    mesma requisição. O arquivo some quando a instância Cloud Run
+  //    escala para zero, mas o XML original já está no banco.
+  // ------------------------------------------------------------------
+  try
+    LTmpDir := TPath.Combine('/tmp', 'nfe');
+    if not TDirectory.Exists(LTmpDir) then
+      TDirectory.CreateDirectory(LTmpDir);
+    LTmpPath := TPath.Combine(LTmpDir, AChave + '-' + ATipo + '.xml');
+    TFile.WriteAllText(LTmpPath, AConteudo, TEncoding.UTF8);
+    TLogger.Debug('ACBr.Service.SalvarXML: cópia temporária em %s', [LTmpPath]);
+  except
+    on E: Exception do
+      TLogger.Warn('ACBr.Service.SalvarXML - /tmp: %s (ignorado)', [E.Message]);
   end;
 end;
 

@@ -6,14 +6,14 @@
 
 # Base URL (ajustado para porta 9000)
 @baseUrl = http://localhost:9000
-@token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJOb3RhRmlzY2FsQVBJIiwic3ViIjoidGVzdGUyIiwiaWF0IjoxNzc0Mjc3NTI0LCJleHAiOjE3Nzk0NjE1MjQsInVzZXJfaWQiOjMsImNucGoiOiIwMDA3MzM2NTAwMDE0NiJ9.cgGvHgo8OLT7nq_qWTBG-pT9sskayagaFInrXRsKlWI
+@token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJOb3RhRmlzY2FsQVBJIiwic3ViIjoicG9ydGFsIiwiaWF0IjoxNzc0MzA1NTU1LCJleHAiOjE3Nzk0ODk1NTUsInVzZXJfaWQiOjEsImNucGoiOiIwMDA3MzM2NTAwMDE0NiJ9.t_JIvtDWhCjmz6j6Yr41OnHj8Kzbm-gbdpkQkbm4_A0
 
 ### Login
 POST {{baseUrl}}/v1/auth/login
 Content-Type: application/json
 
 {
-  "username": "teste2",
+  "username": "portal",
   "password": "portal3694"
 }
 
@@ -150,7 +150,7 @@ Authorization: Bearer {{token}}
       "codigo": "1001",
       "descricao": "Peça A",
       "ean": "SEM GTIN",
-      "ncm": "0101",
+      "ncm": "00000000",
       "cfop": "5102",
       "unidade": "UN",
       "quantidade": 2,
@@ -169,7 +169,7 @@ Authorization: Bearer {{token}}
       "codigo": "1002",
       "descricao": "Peça B",
       "ean": "SEM GTIN",
-      "ncm": "0101",
+      "ncm": "00000000",
       "cfop": "5102",
       "unidade": "UN",
       "quantidade": 1,
