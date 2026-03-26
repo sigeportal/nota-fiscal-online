@@ -529,3 +529,52 @@ TAG:%TAGNIVEL% ID:E10/cMun(Código IBGE do município) - Conteúdo inválido.
 [2026-03-23 12:04:47] [DEBUG] ACBr.Service.EmitirNFCe - pré-GerarNFe: Notas=1 DetCount=2 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
 [2026-03-23 12:04:48] [INFO ] ACBr.Service: XML salvo em D:\PROJETOS\NotaFiscal\nota-fiscal-online\data\xml\50260300073365000146550020000000011585978634-nfe.xml
 [2026-03-23 12:04:48] [INFO ] ACBr.Service.ExecutarEnvio: chave=50260300073365000146550020000000011585978634 cStat=100 motivo=Autorizado o uso da NF-e
+[2026-03-24 16:06:18] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-24 16:10:02] [INFO ] Configuracao.Service: configurações do usuário 3 salvas
+[2026-03-25 12:09:37] [WARN ] Auth.Service: Login falhou para usuário portal
+[2026-03-25 12:09:46] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-25 16:18:29] [WARN ] Auth.Service: Login falhou para usuário portal
+[2026-03-25 16:18:34] [INFO ] Auth.Service: Login bem-sucedido para teste2 (id=3)
+[2026-03-25 16:18:54] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-25 16:18:54] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-25 16:18:54] [DEBUG] ACBr.Service.ConsultarStatusSefaz - Config: UF=MS Ambiente=1 Schemas=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\ XmlDir=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\data\xml\
+[2026-03-25 16:18:54] [ERROR] ACBr.Service.ConsultarStatusSefaz - Exception em StatusServico: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-25 16:19:00] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-25 16:19:00] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-25 16:19:00] [DEBUG] ACBr.Service.MontarNFCe - inicio: natOp=VENDA A CONSUMIDOR serie=1 ambiente=2 itens=1 pagamentos=1
+[2026-03-26 16:52:50] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-26 16:52:50] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-26 16:52:51] [INFO ] ACBr.Service.ProximoNumeroNF: modelo=NFCe serie=1 numero=101
+[2026-03-26 16:52:51] [DEBUG] ACBr.Service.MontarNFCe - inicio: natOp=VENDA A CONSUMIDOR serie=1 ambiente=2 itens=1 pagamentos=1
+[2026-03-26 16:52:51] [DEBUG] ACBr.Service.MontarNFCe - pós-montagem: DetCount=1 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-26 16:52:51] [ERROR] ACBr.Service.ExecutarEnvio | Exception: [EACBrDFeException] Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-26 17:02:23] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-26 17:02:23] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-26 17:02:24] [INFO ] ACBr.Service.ProximoNumeroNF: modelo=NFCe serie=1 numero=101
+[2026-03-26 17:02:24] [DEBUG] ACBr.Service.MontarNFCe - inicio: natOp=VENDA A CONSUMIDOR serie=1 ambiente=2 itens=1 pagamentos=1
+[2026-03-26 17:02:24] [DEBUG] ACBr.Service.MontarNFCe - pós-montagem: DetCount=1 PagCount=1 Emit.EnderEmit=True Dest.EnderDest=True InfAdic=True infRespTec=True
+[2026-03-26 17:02:24] [ERROR] ACBr.Service.ExecutarEnvio | Exception: [EACBrDFeException] Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-26 17:03:50] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-26 17:03:50] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-26 17:03:50] [DEBUG] ACBr.Service.ConsultarStatusSefaz - Config: UF=MS Ambiente=1 Schemas=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\ XmlDir=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\data\xml\
+[2026-03-26 17:03:51] [ERROR] ACBr.Service.ConsultarStatusSefaz - Exception em StatusServico: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-26 17:04:44] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-26 17:04:44] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-26 17:04:44] [DEBUG] ACBr.Service.ConsultarStatusSefaz - Config: UF=MS Ambiente=1 Schemas=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\ XmlDir=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\data\xml\
+[2026-03-26 17:04:44] [ERROR] ACBr.Service.ConsultarStatusSefaz - Exception em StatusServico: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library
+[2026-03-26 17:05:23] [INFO ] ACBr.Service.CarregarCertificado: Certificado carregado via DadosPFX para CNPJ 00073365000146
+[2026-03-26 17:05:23] [INFO ] ACBr.Service: Configurado com sucesso para CNPJ 00073365000146
+[2026-03-26 17:05:23] [DEBUG] ACBr.Service.ConsultarStatusSefaz - Config: UF=MS Ambiente=1 Schemas=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\Schemas\NFe\ XmlDir=D:\PROJETOS\NotaFiscalOnline\nota-fiscal-online\data\xml\
+[2026-03-26 17:05:23] [ERROR] ACBr.Service.ConsultarStatusSefaz - Exception em StatusServico: Erro ao ler informações do Certificado.
+Provavelmente a senha está errada
+Error: 310378599 - error:12800067:DSO support routines::could not load the shared library

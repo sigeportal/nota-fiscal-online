@@ -205,12 +205,8 @@ end;
 
 class procedure TConfiguracaoController.Registrar;
 begin
-  THorse
-    .Group
-    .Prefix('/v1')
-    .Route('/configuracoes')
-      .Get(Buscar)
-      .Put(Salvar);
+  THorse.Group.Prefix('/v1').Route('/configuracoes').Get(Buscar);
+  THorse.Group.Prefix('/v1').Route('/configuracoes').Put(Salvar);
 end;
 
 initialization

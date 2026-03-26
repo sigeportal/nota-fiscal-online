@@ -23,6 +23,7 @@ uses
   System.SysUtils,
   System.Classes,
   System.JSON,
+  System.Math,
   System.IOUtils,
   System.DateUtils,
   System.RegularExpressions,
@@ -36,6 +37,8 @@ uses
   ACBrDFeSSL,
   UnitConnection.Model.Interfaces,
   Models.NF,
+  ACBrNFeDANFeFPDF,
+  ACBrNFCeDANFeFPDF,
   ACBrNFe.Classes,
   ACBrNFe.EnvEvento;
 
@@ -54,6 +57,8 @@ type
   TACBrNFeService = class
   private
     FACBrNFe: TACBrNFe;
+    FDANFE55: TACBrNFeDANFeFPDF;
+    FDANFE65: TACBrNFCeDANFeFPDF;
     FConfigurado: Boolean;
     FCNPJ: string;
     FUsuarioId: Integer;
@@ -69,10 +74,16 @@ type
     procedure AdicionarItensNFCe(AJSON: TJSONObject);
     procedure AdicionarPagamentos(AJSON: TJSONObject);
 
-    function ExecutarEnvio(ALote: string): TResultadoEmissao;
+    function ExecutarEnvio(const ALote, AModelo, ASerie: string; ANumero: Integer; AJSON: TJSONObject): TResultadoEmissao;
+    function ObterNumeroInicialConfigurado(const AModelo: string): Integer;
+    function DetectarTipoDocumento(const AChave: string): string;
+    procedure SalvarNotaEItens(AJSON: TJSONObject; const AResult: TResultadoEmissao; const AModelo, ASerie: string; ANumero: Integer);
     procedure SalvarXML(const AChave, AConteudo, ATipo: string);
+    procedure SalvarDANFE(const AChave, APDFPath: string);
     function ExtrairDadosNFe(const Chave: string; out CNPJ, NumSerie, NumeroNF: string): Boolean;
     function BytesToRawByteString(const Bytes: TArray<Byte>): RawByteString;
+    procedure CalculaTotais(var LNFe: TNFe; TipoNF: string);
+    procedure PrepararDANFE(const ATipo: string);
 
   public
     constructor Create;
@@ -107,6 +118,8 @@ constructor TACBrNFeService.Create;
 begin
   inherited Create;
   FACBrNFe := TACBrNFe.Create(nil);
+  FDANFE55 := nil;
+  FDANFE65 := nil;
   FConfigurado := False;
   FUsuarioId := 0;
   FConfig := nil;
@@ -114,9 +127,32 @@ end;
 
 destructor TACBrNFeService.Destroy;
 begin
+  FreeAndNil(FDANFE65);
+  FreeAndNil(FDANFE55);
   FreeAndNil(FACBrNFe);
   FreeAndNil(FConfig);
   inherited Destroy;
+end;
+
+procedure TACBrNFeService.PrepararDANFE(const ATipo: string);
+begin
+  if SameText(ATipo, 'nfce') then
+  begin
+    if not Assigned(FDANFE65) then
+      FDANFE65 := TACBrNFCeDANFeFPDF.Create(FACBrNFe);
+
+    FACBrNFe.DANFE := FDANFE65;
+  end
+  else
+  begin
+    if not Assigned(FDANFE55) then
+      FDANFE55 := TACBrNFeDANFeFPDF.Create(FACBrNFe);
+
+    FACBrNFe.DANFE := FDANFE55;
+  end;
+
+  FACBrNFe.DANFE.MostraPreview := False;
+  FACBrNFe.DANFE.MostraStatus := False;
 end;
 
 function TACBrNFeService.Configurar(const ACNPJ: string; AUsuarioId: Integer = 0): Boolean;
@@ -157,6 +193,8 @@ begin
 end;
 
 procedure TACBrNFeService.ConfigurarGeral(AModeloDF: string);
+var
+  LUF: string;
 begin
   with FACBrNFe.Configuracoes do
   begin
@@ -166,20 +204,25 @@ begin
     WebServices.TimeOut := 10000;
     Geral.VersaoQRCode := veqr200;
     Geral.VersaoDF := ve400;
+    Geral.IdCSC := '';
+    Geral.CSC := '';
 
     if AModeloDF = 'NFCe' then
     begin
       Geral.ModeloDF := moNFCe;
       if Assigned(FConfig) then
       begin
-        Geral.IdCSC := FConfig.NFCeIdCSC;
-        Geral.CSC := FConfig.NFCeCSC;
+        Geral.IdCSC := Trim(FConfig.NFCeIdCSC);
+        Geral.CSC := Trim(FConfig.NFCeCSC);
       end;
     end
     else
       Geral.ModeloDF := moNFe;
 
-    WebServices.UF := TAppConfig.UF;
+    LUF := Trim(TAppConfig.UF);
+    if LUF.IsEmpty then
+      LUF := 'MS';
+    WebServices.UF := LUF;
 
     // Ambiente lido da variável AMBIENTE_PRODUCAO (0=homolog, 1=producao)
     if TAppConfig.AmbienteProducao then
@@ -273,8 +316,16 @@ end;
 function TACBrNFeService.ProximoNumeroNF(const ATabela, ACampoNF, ACampoCodigo, ASerie: string): Integer;
 var
   LQuery: iQuery;
+  LMaxAtual: Integer;
+  LModelo: string;
 begin
-  Result := 1;
+  if SameText(ATabela, 'NFC') then
+    LModelo := 'NFCe'
+  else
+    LModelo := 'NFe';
+
+  Result := ObterNumeroInicialConfigurado(LModelo);
+
   LQuery := TDatabase.Query;
   LQuery.Clear;
   LQuery.Add('SELECT MAX(' + ACampoNF + ') FROM ' + ATabela);
@@ -285,8 +336,63 @@ begin
     LQuery.AddParam('SERIE', ASerie);
   end;
   LQuery.Open;
-  if not LQuery.DataSet.IsEmpty then
-    Result := LQuery.DataSet.Fields[0].AsInteger + 1;
+  LMaxAtual := 0;
+  if (not LQuery.DataSet.IsEmpty) and (not LQuery.DataSet.Fields[0].IsNull) then
+    LMaxAtual := LQuery.DataSet.Fields[0].AsInteger;
+
+  if LMaxAtual > 0 then
+    Result := Max(Result, LMaxAtual + 1);
+
+  TLogger.Info('ACBr.Service.ProximoNumeroNF: modelo=%s serie=%s numero=%d', [LModelo, ASerie, Result]);
+end;
+
+function TACBrNFeService.ObterNumeroInicialConfigurado(const AModelo: string): Integer;
+var
+  LQuery: iQuery;
+  LCampoNumero: string;
+  LCNPJNum: string;
+begin
+  Result := 1;
+
+  if SameText(AModelo, 'NFCe') then
+    LCampoNumero := 'CFG_NFCE_NUMERO_INICIAL'
+  else
+    LCampoNumero := 'CFG_NFE_NUMERO_INICIAL';
+
+  LCNPJNum := StringReplace(FCNPJ, '.', '', [rfReplaceAll]);
+  LCNPJNum := StringReplace(LCNPJNum, '/', '', [rfReplaceAll]);
+  LCNPJNum := StringReplace(LCNPJNum, '-', '', [rfReplaceAll]);
+
+  try
+    LQuery := TDatabase.Query;
+    LQuery.Clear;
+    LQuery.Add('SELECT FIRST 1 ' + LCampoNumero);
+    LQuery.Add('  FROM CONFIGURACOES_USUARIO');
+
+    if FUsuarioId > 0 then
+    begin
+      LQuery.Add(' WHERE CFG_USU = :USU');
+      LQuery.AddParam('USU', FUsuarioId);
+    end
+    else
+    begin
+      LQuery.Add(' WHERE CFG_EMIT_CNPJ = :CNPJ');
+      LQuery.AddParam('CNPJ', LCNPJNum);
+    end;
+
+    LQuery.Add(' ORDER BY CFG_DATA_ATUALIZACAO DESC, CFG_CODIGO DESC');
+    LQuery.Open;
+
+    if (not LQuery.DataSet.IsEmpty) and (not LQuery.DataSet.Fields[0].IsNull)
+      and (LQuery.DataSet.Fields[0].AsInteger > 0) then
+      Result := LQuery.DataSet.Fields[0].AsInteger;
+  except
+    on E: Exception do
+      TLogger.Warn('ACBr.Service.ObterNumeroInicialConfigurado: %s', [E.Message]);
+  end;
+
+  if Result <= 0 then
+    Result := 1;
 end;
 
 // ============================================================
@@ -356,7 +462,7 @@ begin
     end;
 
     LLote := LSerie + IntToStr(LNumero);
-    Result := ExecutarEnvio(LLote);
+    Result := ExecutarEnvio(LLote, 'NFe', LSerie, LNumero, AJSON);
   except
     on E: Exception do
     begin
@@ -369,12 +475,11 @@ end;
 
 function TACBrNFeService.MontarNFe(AJSON: TJSONObject; ANumero: Integer): Boolean;
 var
-  i: Integer;
   LNFe: TNFe;
   LEmitEnd: TJSONObject;
+  LEmitUF: string;
   LDest: TJSONObject;
   LDestEnd: TJSONObject;
-  nTotalItens, nTotalDesc, nTotalFrete, nTotalSeg, nTotalOutros, nTotalST, nTotalIPI: Double;
 begin
   Result := False;
   try
@@ -397,6 +502,7 @@ begin
       LNFe.Ide.cMunFG := AJSON.GetValue<Integer>('emit_cod_mun_ibge', 5003801);
       LNFe.Ide.nNF := ANumero;
       LNFe.Ide.tpNF := tnSaida;
+      LNFe.Ide.tpImp := tiRetrato;
       LNFe.Ide.indFinal := TpcnConsumidorFinal(AJSON.GetValue<Integer>('consumidor_final', 1));
       LNFe.Ide.indPres := TpcnPresencaComprador(AJSON.GetValue<Integer>('indicador_presenca', 1));
       LNFe.Ide.tpAmb := TACBrTipoAmbiente(AJSON.GetValue<Integer>('ambiente', 2) - 1);
@@ -434,7 +540,12 @@ begin
           LNFe.Emit.EnderEmit.nro := LEmitEnd.GetValue<string>('numero', 'SN');
           LNFe.Emit.EnderEmit.xBairro := LEmitEnd.GetValue<string>('bairro', '');
           LNFe.Emit.EnderEmit.xMun := LEmitEnd.GetValue<string>('municipio', '');
-          LNFe.Emit.EnderEmit.UF := LEmitEnd.GetValue<string>('uf', TAppConfig.UF);
+          LEmitUF := Trim(LEmitEnd.GetValue<string>('uf', ''));
+          if LEmitUF.IsEmpty then
+            LEmitUF := Trim(TAppConfig.UF);
+          if LEmitUF.IsEmpty then
+            LEmitUF := 'MS';
+          LNFe.Emit.EnderEmit.UF := LEmitUF;
           LNFe.Emit.EnderEmit.CEP := StrToInt(LEmitEnd.GetValue<string>('cep', '0'));
           LNFe.Emit.EnderEmit.cMun := LEmitEnd.GetValue<Integer>('codigo_municipio', 0);
         end
@@ -485,45 +596,8 @@ begin
 
       // Itens
       AdicionarItensNFe(AJSON);
-
-      // Totais (calculados automaticamente pelo ACBr ao GerarNFe)
-      nTotalItens := 0;
-      nTotalDesc := 0;
-      nTotalFrete := 0;
-      nTotalSeg := 0;
-      nTotalOutros := 0;
-      nTotalST := 0;
-      nTotalIPI := 0;
-
-      // 1. Somar os valores percorrendo os itens (Det)
-      for i := 0 to LNFe.Det.Count - 1 do
-      begin
-        // Verifica se o item compõe o total da nota (1 = itCompoeTotal)
-        if LNFe.Det.Items[i].Prod.indTot = itSomaTotalNFe then
-        begin
-          nTotalItens := nTotalItens + LNFe.Det.Items[i].Prod.vProd;
-          nTotalDesc := nTotalDesc + LNFe.Det.Items[i].Prod.vDesc;
-          nTotalFrete := nTotalFrete + LNFe.Det.Items[i].Prod.vFrete;
-          nTotalSeg := nTotalSeg + LNFe.Det.Items[i].Prod.vSeg;
-          nTotalOutros := nTotalOutros + LNFe.Det.Items[i].Prod.vOutro;
-
-          // Impostos que somam no total da nota
-          nTotalST := nTotalST + LNFe.Det.Items[i].Imposto.ICMS.vICMSST;
-          nTotalIPI := nTotalIPI + LNFe.Det.Items[i].Imposto.IPI.vIPI;
-        end;
-      end;
-
-      // 2. Atribuir os totais ao grupo ICMSTot usando a variável LNFe
-      LNFe.Total.ICMSTot.vProd := nTotalItens;
-      LNFe.Total.ICMSTot.vDesc := nTotalDesc;
-      LNFe.Total.ICMSTot.vST := nTotalST;
-      LNFe.Total.ICMSTot.vFrete := nTotalFrete;
-      LNFe.Total.ICMSTot.vSeg := nTotalSeg;
-      LNFe.Total.ICMSTot.vOutro := nTotalOutros;
-      LNFe.Total.ICMSTot.vIPI := nTotalIPI;
-
-      // 3. Calcular o valor final da nota (vNF)
-      LNFe.Total.ICMSTot.vNF := (nTotalItens - nTotalDesc) + nTotalST + nTotalFrete + nTotalSeg + nTotalOutros + nTotalIPI;
+      //calcula totais
+      CalculaTotais(LNFe, 'NFe');
       // Pagamentos
       AdicionarPagamentos(AJSON);
 
@@ -673,6 +747,12 @@ begin
   try
     ConfigurarGeral('NFCe');
 
+    if FACBrNFe.Configuracoes.Geral.IdCSC.IsEmpty or FACBrNFe.Configuracoes.Geral.CSC.IsEmpty then
+    begin
+      Result.Erro := 'CSC e IdCSC da NFC-e não configurados para o usuário. Configure esses dados antes de emitir NFC-e.';
+      Exit;
+    end;
+
     LAmbiente := AJSON.GetValue<string>('ambiente', '2');
     if LAmbiente = '1' then
       FACBrNFe.Configuracoes.WebServices.Ambiente := taProducao
@@ -703,7 +783,7 @@ begin
     end;
 
     LLote := LSerie + IntToStr(LNumero);
-    Result := ExecutarEnvio(LLote);
+    Result := ExecutarEnvio(LLote, 'NFCe', LSerie, LNumero, AJSON);
   except
     on E: Exception do
     begin
@@ -718,7 +798,8 @@ function TACBrNFeService.MontarNFCe(AJSON: TJSONObject; ANumero: Integer): Boole
 var
   LNFe: TNFe;
   LEmitEnd: TJSONObject;
-  LCPF: string;
+  LEmitUF: string;
+  LCPF: string;  
 begin
   Result := False;
   try
@@ -736,12 +817,19 @@ begin
       LNFe.Ide.natOp := AJSON.GetValue<string>('natureza_operacao', 'VENDA A CONSUMIDOR');
       LNFe.Ide.modelo := 65;
       LNFe.Ide.serie := AJSON.GetValue<Integer>('serie', 1);
+      LNFe.Ide.cUF := AJSON.GetValue<Integer>('emit_cod_uf', 50);
+      LNFe.Ide.cMunFG := AJSON.GetValue<Integer>('emit_cod_mun_ibge', 5003801);
       LNFe.Ide.nNF := ANumero;
       LNFe.Ide.tpNF := tnSaida;
+      LNFe.Ide.tpImp := tiNFCe;
       LNFe.Ide.indFinal := TpcnConsumidorFinal.cfConsumidorFinal;
       // sempre consumidor final na NFCe
       LNFe.Ide.indPres := TpcnPresencaComprador.pcPresencial; // presencial
-      LNFe.Ide.tpAmb := TACBrTipoAmbiente(AJSON.GetValue<Integer>('ambiente', 2));
+      LNFe.Transp.ModFrete := mfSemFrete; // 9 = Sem frete
+      LNFe.Ide.tpAmb := TACBrTipoAmbiente(AJSON.GetValue<Integer>('ambiente', 2)-1);
+      LNFe.Ide.dEmi := Now;
+      LNFe.Ide.dSaiEnt := Now;
+      LNFe.Ide.hSaiEnt := Now;
 
       // Responsável Técnico (por usuário, via CONFIGURACOES_USUARIO)
       if Assigned(FConfig) and not FConfig.RespCNPJ.IsEmpty then
@@ -761,7 +849,7 @@ begin
       LNFe.Emit.CNPJCPF := FCNPJ;
       LNFe.Emit.xNome := AJSON.GetValue<string>('emit_razao_social', '');
       LNFe.Emit.IE := AJSON.GetValue<string>('emit_ie', '');
-      LNFe.Emit.CRT := TpcnCRT(AJSON.GetValue<Integer>('emit_crt', 3));
+      LNFe.Emit.CRT := TpcnCRT(AJSON.GetValue<Integer>('emit_crt', 1)-1);
 
       LEmitEnd := AJSON.GetValue<TJSONObject>('emit_endereco');
       if Assigned(LEmitEnd) then
@@ -772,7 +860,12 @@ begin
           LNFe.Emit.EnderEmit.nro := LEmitEnd.GetValue<string>('numero', 'SN');
           LNFe.Emit.EnderEmit.xBairro := LEmitEnd.GetValue<string>('bairro', '');
           LNFe.Emit.EnderEmit.xMun := LEmitEnd.GetValue<string>('municipio', '');
-          LNFe.Emit.EnderEmit.UF := LEmitEnd.GetValue<string>('uf', TAppConfig.UF);
+          LEmitUF := Trim(LEmitEnd.GetValue<string>('uf', ''));
+          if LEmitUF.IsEmpty then
+            LEmitUF := Trim(TAppConfig.UF);
+          if LEmitUF.IsEmpty then
+            LEmitUF := 'MS';
+          LNFe.Emit.EnderEmit.UF := LEmitUF;
           LNFe.Emit.EnderEmit.CEP := StrToInt(LEmitEnd.GetValue<string>('cep', '0'));
           LNFe.Emit.EnderEmit.cMun := LEmitEnd.GetValue<Integer>('codigo_municipio', 0);
         end
@@ -790,7 +883,8 @@ begin
 
       // Itens
       AdicionarItensNFCe(AJSON);
-
+      //calcula totais
+      CalculaTotais(LNFe, 'NFCe');
       // Pagamentos
       AdicionarPagamentos(AJSON);
     end;
@@ -812,6 +906,55 @@ begin
       raise;
     end;
   end;
+end;
+
+procedure TACBrNFeService.CalculaTotais(var LNFe: TNFe; TipoNF: string);
+var 
+	nTotalItens, nTotalDesc, nTotalFrete, nTotalSeg, nTotalOutros, nTotalST, nTotalIPI: Double;
+  i: integer;
+begin
+		// Totais (calculados automaticamente pelo ACBr ao GerarNFe)
+    nTotalItens := 0;
+    nTotalDesc := 0;
+    nTotalFrete := 0;
+    nTotalSeg := 0;
+    nTotalOutros := 0;
+    nTotalST := 0;
+    nTotalIPI := 0;
+
+    // 1. Somar os valores percorrendo os itens (Det)
+    for i := 0 to LNFe.Det.Count - 1 do
+    begin
+      // Verifica se o item compõe o total da nota (1 = itCompoeTotal)
+      if LNFe.Det.Items[i].Prod.indTot = itSomaTotalNFe then
+      begin
+        nTotalItens := nTotalItens + LNFe.Det.Items[i].Prod.vProd;
+        nTotalDesc := nTotalDesc + LNFe.Det.Items[i].Prod.vDesc;
+        // Impostos que somam no total da nota
+        nTotalST := nTotalST + LNFe.Det.Items[i].Imposto.ICMS.vICMSST;
+        nTotalIPI := nTotalIPI + LNFe.Det.Items[i].Imposto.IPI.vIPI;
+        if TipoNF.Contains('NFe') then
+        begin
+          nTotalFrete := nTotalFrete + LNFe.Det.Items[i].Prod.vFrete;
+          nTotalSeg := nTotalSeg + LNFe.Det.Items[i].Prod.vSeg;          
+        	nTotalOutros := nTotalOutros + LNFe.Det.Items[i].Prod.vOutro;
+        end;
+      end;
+    end;
+
+    // 2. Atribuir os totais ao grupo ICMSTot usando a variável LNFe
+    LNFe.Total.ICMSTot.vProd := nTotalItens;
+    LNFe.Total.ICMSTot.vDesc := nTotalDesc;
+    LNFe.Total.ICMSTot.vST := nTotalST;
+    LNFe.Total.ICMSTot.vIPI := nTotalIPI;
+		if TipoNF.Contains('NFe') then
+    begin
+      LNFe.Total.ICMSTot.vFrete := nTotalFrete;
+      LNFe.Total.ICMSTot.vSeg := nTotalSeg;
+      LNFe.Total.ICMSTot.vOutro := nTotalOutros;
+    end;    
+    // 3. Calcular o valor final da nota (vNF)
+    LNFe.Total.ICMSTot.vNF := (nTotalItens - nTotalDesc) + nTotalST + nTotalFrete + nTotalSeg + nTotalOutros + nTotalIPI;
 end;
 
 procedure TACBrNFeService.AdicionarItensNFCe(AJSON: TJSONObject);
@@ -937,7 +1080,9 @@ end;
 // ENVIO (comum NFe/NFCe)
 // ============================================================
 
-function TACBrNFeService.ExecutarEnvio(ALote: string): TResultadoEmissao;
+function TACBrNFeService.ExecutarEnvio(const ALote, AModelo, ASerie: string; ANumero: Integer; AJSON: TJSONObject): TResultadoEmissao;
+var
+  LTipo: string;
 begin
   Result.Sucesso := False;
   Result.Chave := '';
@@ -958,7 +1103,15 @@ begin
     Result.Sucesso := Result.CStat = 100;
 
     if Result.Sucesso then
-      SalvarXML(Result.Chave, Result.XML, 'nfe')
+    begin
+      if SameText(AModelo, 'NFCe') then
+        LTipo := 'nfce'
+      else
+        LTipo := 'nfe';
+
+      SalvarNotaEItens(AJSON, Result, AModelo, ASerie, ANumero);
+      SalvarXML(Result.Chave, Result.XML, LTipo);
+    end
     else
       Result.Erro := Format('SEFAZ retornou cStat=%d: %s', [Result.CStat, Result.Motivo]);
 
@@ -971,6 +1124,310 @@ begin
       TLogger.Error('ACBr.Service.ExecutarEnvio', E);
     end;
   end;
+end;
+
+function TACBrNFeService.DetectarTipoDocumento(const AChave: string): string;
+begin
+  if (Length(AChave) = 44) and (Copy(AChave, 21, 2) = '65') then
+    Result := 'nfce'
+  else
+    Result := 'nfe';
+end;
+
+procedure TACBrNFeService.SalvarNotaEItens(AJSON: TJSONObject; const AResult: TResultadoEmissao; const AModelo, ASerie: string; ANumero: Integer);
+var
+  LCabQuery: iQuery;
+  LItemQuery: iQuery;
+  LDelItensQuery: iQuery;
+  LItens: TJSONArray;
+  LItem: TJSONObject;
+  LNotaCodigo: Integer;
+  LItemCodigo: Integer;
+  LValorTotal: Currency;
+  LDescontoTotal: Currency;
+  LValorProdutos: Currency;
+  LBCIcms: Currency;
+  LVIcms: Currency;
+  LValorItem: Currency;
+  LAliqIcms: Double;
+  LCFOPPrincipal: string;
+  LProdutoNum: Integer;
+  LCPFCliente: string;
+  LNomeCliente: string;
+  i: Integer;
+begin
+  if not Assigned(AJSON) then
+    Exit;
+
+  LItens := AJSON.GetValue<TJSONArray>('itens');
+  LValorTotal := 0;
+  LDescontoTotal := 0;
+  LValorProdutos := 0;
+  LBCIcms := 0;
+  LVIcms := 0;
+  LCFOPPrincipal := '';
+
+  if Assigned(LItens) then
+  begin
+    for i := 0 to LItens.Count - 1 do
+    begin
+      LItem := LItens.Items[i] as TJSONObject;
+      LValorItem := LItem.GetValue<Currency>('valor_total', 0);
+      LAliqIcms := LItem.GetValue<Double>('aliq_icms', 0);
+
+      LValorTotal := LValorTotal + LValorItem;
+      LValorProdutos := LValorProdutos + LValorItem;
+      LDescontoTotal := LDescontoTotal + LItem.GetValue<Currency>('desconto', 0);
+
+      if LAliqIcms > 0 then
+      begin
+        LBCIcms := LBCIcms + LValorItem;
+        LVIcms := LVIcms + ((LValorItem * LAliqIcms) / 100);
+      end;
+
+      if LCFOPPrincipal.IsEmpty then
+        LCFOPPrincipal := LItem.GetValue<string>('cfop', '5102');
+    end;
+  end;
+
+  if LCFOPPrincipal.IsEmpty then
+    LCFOPPrincipal := '5102';
+
+  if SameText(AModelo, 'NFCe') then
+  begin
+    LCPFCliente := AJSON.GetValue<string>('cpf_cliente', '');
+    LNomeCliente := AJSON.GetValue<string>('nome_cliente', '');
+
+    LCabQuery := TDatabase.Query;
+    LCabQuery.Clear;
+    LCabQuery.Add('SELECT FIRST 1 NFC_CODIGO FROM NFC WHERE NFC_CHAVE_NFCE = :CHAVE');
+    LCabQuery.AddParam('CHAVE', AResult.Chave);
+    LCabQuery.Open;
+
+    if not LCabQuery.DataSet.IsEmpty then
+      LNotaCodigo := LCabQuery.DataSet.FieldByName('NFC_CODIGO').AsInteger
+    else
+    begin
+      LCabQuery.Clear;
+      LCabQuery.Add('SELECT COALESCE(MAX(NFC_CODIGO), 0) + 1 AS CODIGO FROM NFC');
+      LCabQuery.Open;
+      LNotaCodigo := LCabQuery.DataSet.FieldByName('CODIGO').AsInteger;
+
+      LCabQuery.Clear;
+      LCabQuery.Add('INSERT INTO NFC ('+
+        'NFC_CODIGO, NFC_NF, NFC_CFOP, NFC_DATA, NFC_HORA, NFC_MODELO, NFC_SERIE, ' +
+        'NFC_CHAVE_NFCE, NFC_SITUACAO_NFCE, NFC_VALOR, NFC_DESCONTO, NFC_BCICMS, NFC_VICMS, NFC_VTPROD, ' +
+        'NFC_NUM_RECIBO_NFCE, NFC_PROT_AUT_NFCE, NFC_CPF_CLIENTE, NFC_NOME_CLIENTE, NFC_OPER_CONSUM_FINAL, NFC_CONDICAO_PGTO)' );
+      LCabQuery.Add('VALUES ('+
+        ':CODIGO, :NF, :CFOP, CURRENT_DATE, CURRENT_TIME, ''65'', :SERIE, ' +
+        ':CHAVE, ''AUTORIZADA'', :VALOR, :DESCONTO, :BCICMS, :VICMS, :VTPROD, ' +
+        ':RECIBO, :PROTOCOLO, :CPF, :NOME, ''S'', ''1'')');
+      LCabQuery.AddParam('CODIGO', LNotaCodigo);
+      LCabQuery.AddParam('NF', ANumero);
+      LCabQuery.AddParam('CFOP', LCFOPPrincipal);
+      LCabQuery.AddParam('SERIE', ASerie);
+      LCabQuery.AddParam('CHAVE', AResult.Chave);
+      LCabQuery.AddParam('VALOR', LValorTotal);
+      LCabQuery.AddParam('DESCONTO', LDescontoTotal);
+      LCabQuery.AddParam('BCICMS', LBCIcms);
+      LCabQuery.AddParam('VICMS', LVIcms);
+      LCabQuery.AddParam('VTPROD', LValorProdutos);
+      LCabQuery.AddParam('RECIBO', AResult.Protocolo);
+      LCabQuery.AddParam('PROTOCOLO', AResult.Protocolo);
+      LCabQuery.AddParam('CPF', LCPFCliente);
+      LCabQuery.AddParam('NOME', LNomeCliente);
+      LCabQuery.ExecSQL;
+    end;
+
+    LCabQuery.Clear;
+    LCabQuery.Add('UPDATE NFC SET ' +
+                  'NFC_NF = :NF, NFC_SERIE = :SERIE, NFC_CFOP = :CFOP, ' +
+                  'NFC_SITUACAO_NFCE = ''AUTORIZADA'', NFC_NUM_RECIBO_NFCE = :RECIBO, NFC_PROT_AUT_NFCE = :PROTOCOLO, ' +
+                  'NFC_VALOR = :VALOR, NFC_DESCONTO = :DESCONTO, NFC_BCICMS = :BCICMS, NFC_VICMS = :VICMS, NFC_VTPROD = :VTPROD, ' +
+                  'NFC_CPF_CLIENTE = :CPF, NFC_NOME_CLIENTE = :NOME ' +
+                  'WHERE NFC_CODIGO = :CODIGO');
+    LCabQuery.AddParam('NF', ANumero);
+    LCabQuery.AddParam('SERIE', ASerie);
+    LCabQuery.AddParam('CFOP', LCFOPPrincipal);
+    LCabQuery.AddParam('RECIBO', AResult.Protocolo);
+    LCabQuery.AddParam('PROTOCOLO', AResult.Protocolo);
+    LCabQuery.AddParam('VALOR', LValorTotal);
+    LCabQuery.AddParam('DESCONTO', LDescontoTotal);
+    LCabQuery.AddParam('BCICMS', LBCIcms);
+    LCabQuery.AddParam('VICMS', LVIcms);
+    LCabQuery.AddParam('VTPROD', LValorProdutos);
+    LCabQuery.AddParam('CPF', LCPFCliente);
+    LCabQuery.AddParam('NOME', LNomeCliente);
+    LCabQuery.AddParam('CODIGO', LNotaCodigo);
+    LCabQuery.ExecSQL;
+
+    LDelItensQuery := TDatabase.Query;
+    LDelItensQuery.Clear;
+    LDelItensQuery.Add('DELETE FROM NFC_PRO WHERE NP_NFC = :NFC');
+    LDelItensQuery.AddParam('NFC', LNotaCodigo);
+    LDelItensQuery.ExecSQL;
+
+    if Assigned(LItens) then
+    begin
+      for i := 0 to LItens.Count - 1 do
+      begin
+        LItem := LItens.Items[i] as TJSONObject;
+
+        LItemQuery := TDatabase.Query;
+        LItemQuery.Clear;
+        LItemQuery.Add('SELECT COALESCE(MAX(NP_CODIGO), 0) + 1 AS CODIGO FROM NFC_PRO');
+        LItemQuery.Open;
+        LItemCodigo := LItemQuery.DataSet.FieldByName('CODIGO').AsInteger;
+
+        LAliqIcms := LItem.GetValue<Double>('aliq_icms', 0);
+        LValorItem := LItem.GetValue<Currency>('valor_total', 0);
+
+        LProdutoNum := StrToIntDef(LItem.GetValue<string>('codigo', '0'), 0);
+
+        LItemQuery.Clear;
+        LItemQuery.Add('INSERT INTO NFC_PRO ('+
+                       'NP_CODIGO, NP_NFC, NP_PRO, NP_NOME, NP_QUANTIDADE, NP_VALOR, NP_CFOP, NP_CST_ICMS, NP_ALIQ_ICMS, NP_BC_ICMS)');
+        LItemQuery.Add('VALUES ('+
+                       ':CODIGO, :NFC, :PRO, :NOME, :QTD, :VALOR, :CFOP, :CST, :ALIQ, :BC)');
+        LItemQuery.AddParam('CODIGO', LItemCodigo);
+        LItemQuery.AddParam('NFC', LNotaCodigo);
+        LItemQuery.AddParam('PRO', LProdutoNum);
+        LItemQuery.AddParam('NOME', LItem.GetValue<string>('descricao', ''));
+        LItemQuery.AddParam('QTD', LItem.GetValue<Double>('quantidade', 0));
+        LItemQuery.AddParam('VALOR', LValorItem);
+        LItemQuery.AddParam('CFOP', LItem.GetValue<string>('cfop', '5102'));
+        LItemQuery.AddParam('CST', LItem.GetValue<string>('cst_icms', '102'));
+        LItemQuery.AddParam('ALIQ', LAliqIcms);
+        if LAliqIcms > 0 then
+          LItemQuery.AddParam('BC', LValorItem)
+        else
+          LItemQuery.AddParam('BC', 0);
+        LItemQuery.ExecSQL;
+      end;
+    end;
+  end
+  else
+  begin
+    LCabQuery := TDatabase.Query;
+    LCabQuery.Clear;
+    LCabQuery.Add('SELECT FIRST 1 NOT_CODIGO FROM NOTAS_FISCAIS WHERE NOT_CHAVE_NFE = :CHAVE');
+    LCabQuery.AddParam('CHAVE', AResult.Chave);
+    LCabQuery.Open;
+
+    if not LCabQuery.DataSet.IsEmpty then
+      LNotaCodigo := LCabQuery.DataSet.FieldByName('NOT_CODIGO').AsInteger
+    else
+    begin
+      LCabQuery.Clear;
+      LCabQuery.Add('SELECT COALESCE(MAX(NOT_CODIGO), 0) + 1 AS CODIGO FROM NOTAS_FISCAIS');
+      LCabQuery.Open;
+      LNotaCodigo := LCabQuery.DataSet.FieldByName('CODIGO').AsInteger;
+
+      LCabQuery.Clear;
+      LCabQuery.Add('INSERT INTO NOTAS_FISCAIS ('+
+                    'NOT_CODIGO, NOT_DATA, NOT_DATA_ES, NOT_HORA, NOT_CFOP, NOT_NF, NOT_MODELO, NOT_SERIE, NOT_CHAVE_NFE, ' +
+                    'NOT_SITUACAO_NFE, NOT_VALOR, NOT_DESCONTO, NOT_BCICMS, NOT_VICMS, NOT_VTPROD, NOT_NUM_RECIBO_NFE, NOT_PROT_AUT_NFE, ' +
+                    'NOT_IND_EMISSAO, NOT_OPER_CONSUM_FINAL, NOT_OBS)');
+      LCabQuery.Add('VALUES ('+
+                    ':CODIGO, CURRENT_DATE, CURRENT_DATE, CURRENT_TIME, :CFOP, :NF, ''55'', :SERIE, :CHAVE, ' +
+                    '''AUTORIZADA'', :VALOR, :DESCONTO, :BCICMS, :VICMS, :VTPROD, :RECIBO, :PROTOCOLO, ' +
+                    '''P'', ''S'', :OBS)');
+      LCabQuery.AddParam('CODIGO', LNotaCodigo);
+      LCabQuery.AddParam('CFOP', LCFOPPrincipal);
+      LCabQuery.AddParam('NF', ANumero);
+      LCabQuery.AddParam('SERIE', ASerie);
+      LCabQuery.AddParam('CHAVE', AResult.Chave);
+      LCabQuery.AddParam('VALOR', LValorTotal);
+      LCabQuery.AddParam('DESCONTO', LDescontoTotal);
+      LCabQuery.AddParam('BCICMS', LBCIcms);
+      LCabQuery.AddParam('VICMS', LVIcms);
+      LCabQuery.AddParam('VTPROD', LValorProdutos);
+      LCabQuery.AddParam('RECIBO', AResult.Protocolo);
+      LCabQuery.AddParam('PROTOCOLO', AResult.Protocolo);
+      LCabQuery.AddParam('OBS', AJSON.GetValue<string>('info_complementar', ''));
+      LCabQuery.ExecSQL;
+    end;
+
+    LCabQuery.Clear;
+    LCabQuery.Add('UPDATE NOTAS_FISCAIS SET ' +
+                  'NOT_NF = :NF, NOT_SERIE = :SERIE, NOT_CFOP = :CFOP, ' +
+                  'NOT_SITUACAO_NFE = ''AUTORIZADA'', NOT_NUM_RECIBO_NFE = :RECIBO, NOT_PROT_AUT_NFE = :PROTOCOLO, ' +
+                  'NOT_VALOR = :VALOR, NOT_DESCONTO = :DESCONTO, NOT_BCICMS = :BCICMS, NOT_VICMS = :VICMS, NOT_VTPROD = :VTPROD, ' +
+                  'NOT_OBS = :OBS ' +
+                  'WHERE NOT_CODIGO = :CODIGO');
+    LCabQuery.AddParam('NF', ANumero);
+    LCabQuery.AddParam('SERIE', ASerie);
+    LCabQuery.AddParam('CFOP', LCFOPPrincipal);
+    LCabQuery.AddParam('RECIBO', AResult.Protocolo);
+    LCabQuery.AddParam('PROTOCOLO', AResult.Protocolo);
+    LCabQuery.AddParam('VALOR', LValorTotal);
+    LCabQuery.AddParam('DESCONTO', LDescontoTotal);
+    LCabQuery.AddParam('BCICMS', LBCIcms);
+    LCabQuery.AddParam('VICMS', LVIcms);
+    LCabQuery.AddParam('VTPROD', LValorProdutos);
+    LCabQuery.AddParam('OBS', AJSON.GetValue<string>('info_complementar', ''));
+    LCabQuery.AddParam('CODIGO', LNotaCodigo);
+    LCabQuery.ExecSQL;
+
+    LDelItensQuery := TDatabase.Query;
+    LDelItensQuery.Clear;
+    LDelItensQuery.Add('DELETE FROM NOT_ITENS WHERE NI_NOT = :NOTA');
+    LDelItensQuery.AddParam('NOTA', LNotaCodigo);
+    LDelItensQuery.ExecSQL;
+
+    if Assigned(LItens) then
+    begin
+      for i := 0 to LItens.Count - 1 do
+      begin
+        LItem := LItens.Items[i] as TJSONObject;
+
+        LItemQuery := TDatabase.Query;
+        LItemQuery.Clear;
+        LItemQuery.Add('SELECT COALESCE(MAX(NI_CODIGO), 0) + 1 AS CODIGO FROM NOT_ITENS');
+        LItemQuery.Open;
+        LItemCodigo := LItemQuery.DataSet.FieldByName('CODIGO').AsInteger;
+
+        LAliqIcms := LItem.GetValue<Double>('aliq_icms', 0);
+        LValorItem := LItem.GetValue<Currency>('valor_total', 0);
+        LProdutoNum := StrToIntDef(LItem.GetValue<string>('codigo', '0'), 0);
+
+        LItemQuery.Clear;
+        LItemQuery.Add('INSERT INTO NOT_ITENS ('+
+                       'NI_CODIGO, NI_NOT, NI_PRO, NI_NOME, NI_QUANTIDADE, NI_VALOR, NI_CFOP, NI_CST, NI_ALIQ_ICMS, NI_BCICMS, NI_VICMS, ' +
+                       'NI_UNIDADE, NI_VDESC, NI_CST_PIS, NI_ALIQ_PIS, NI_CST_COFINS, NI_ALIQ_COFINS)');
+        LItemQuery.Add('VALUES ('+
+                       ':CODIGO, :NOTA, :PRO, :NOME, :QTD, :VALOR, :CFOP, :CST, :ALIQ, :BC, :VICMS, :UNID, :VDESC, :CSTPIS, :ALIQPIS, :CSTCOF, :ALIQCOF)');
+        LItemQuery.AddParam('CODIGO', LItemCodigo);
+        LItemQuery.AddParam('NOTA', LNotaCodigo);
+        LItemQuery.AddParam('PRO', LProdutoNum);
+        LItemQuery.AddParam('NOME', LItem.GetValue<string>('descricao', ''));
+        LItemQuery.AddParam('QTD', LItem.GetValue<Double>('quantidade', 0));
+        LItemQuery.AddParam('VALOR', LValorItem);
+        LItemQuery.AddParam('CFOP', LItem.GetValue<string>('cfop', '5102'));
+        LItemQuery.AddParam('CST', LItem.GetValue<string>('cst_icms', '102'));
+        LItemQuery.AddParam('ALIQ', LAliqIcms);
+        if LAliqIcms > 0 then
+        begin
+          LItemQuery.AddParam('BC', LValorItem);
+          LItemQuery.AddParam('VICMS', (LValorItem * LAliqIcms) / 100);
+        end
+        else
+        begin
+          LItemQuery.AddParam('BC', 0);
+          LItemQuery.AddParam('VICMS', 0);
+        end;
+        LItemQuery.AddParam('UNID', LItem.GetValue<string>('unidade', 'UN'));
+        LItemQuery.AddParam('VDESC', LItem.GetValue<Currency>('desconto', 0));
+        LItemQuery.AddParam('CSTPIS', LItem.GetValue<string>('cst_pis', '07'));
+        LItemQuery.AddParam('ALIQPIS', LItem.GetValue<Double>('aliq_pis', 0));
+        LItemQuery.AddParam('CSTCOF', LItem.GetValue<string>('cst_cofins', '07'));
+        LItemQuery.AddParam('ALIQCOF', LItem.GetValue<Double>('aliq_cofins', 0));
+        LItemQuery.ExecSQL;
+      end;
+    end;
+  end;
+
+  TLogger.Info('ACBr.Service.SalvarNotaEItens: modelo=%s chave=%s numero=%d codigo=%d', [AModelo, AResult.Chave, ANumero, LNotaCodigo]);
 end;
 
 // ============================================================
@@ -1067,6 +1524,57 @@ begin
     [roIgnoreCase]);
   if LMatch.Success and (LMatch.Groups.Count > 1) then
     Result := Trim(LMatch.Groups[1].Value);
+end;
+
+function SanitizarXMLConteudo(const AXML: string): string;
+var
+  I: Integer;
+  LChar: Char;
+  LDeclEnd: Integer;
+  LPosTag: Integer;
+  LAposDecl: string;
+begin
+  Result := AXML;
+
+  if Result.IsEmpty then
+    Exit;
+
+  // Remove BOM e nulos que podem vir do banco/blob e quebrar o parser XML.
+  Result := Result.Replace(#$FEFF, '');
+  Result := Result.Replace(#0, '');
+
+  // Mantém apenas caracteres válidos para XML texto (TAB, CR, LF e >= #32).
+  LAposDecl := '';
+  SetLength(LAposDecl, Length(Result));
+  LPosTag := 0;
+  for I := 1 to Length(Result) do
+  begin
+    LChar := Result[I];
+    if (Ord(LChar) >= 32) or (LChar = #9) or (LChar = #10) or (LChar = #13) then
+    begin
+      Inc(LPosTag);
+      LAposDecl[LPosTag] := LChar;
+    end;
+  end;
+  SetLength(LAposDecl, LPosTag);
+  Result := LAposDecl;
+
+  // Garante que não existam bytes/lixo entre a declaração XML e a tag raiz.
+  LDeclEnd := Pos('?>', Result);
+  if LDeclEnd > 0 then
+  begin
+    LAposDecl := Copy(Result, LDeclEnd + 2, MaxInt);
+    while (not LAposDecl.IsEmpty) and (LAposDecl[1] <> '<') do
+      Delete(LAposDecl, 1, 1);
+    Result := Copy(Result, 1, LDeclEnd + 2) + LAposDecl;
+  end;
+
+  // Remove qualquer lixo antes da primeira tag.
+  LPosTag := Pos('<', Result);
+  if LPosTag > 1 then
+    Delete(Result, 1, LPosTag - 1)
+  else if LPosTag = 0 then
+    Result := '';
 end;
 
 function TACBrNFeService.ConsultarStatusSefaz(const AUF: string; AModelo: Integer): TResultadoEmissao;
@@ -1233,18 +1741,27 @@ end;
 function TACBrNFeService.ObterXML(const AChave: string): string;
 var
   LTmpPath: string;
+  LTmpPathLegacy: string;
   LQuery  : iQuery;
   LTabela, LColXML, LColChave: string;
+  LTipo: string;
 begin
   Result := '';
 
-  // 1. Cache /tmp (disponível na mesma instância Cloud Run)
-  LTmpPath := TPath.Combine('/tmp/nfe', AChave + '-nfe.xml');
+  {// 1. Cache /tmp (disponível na mesma instância Cloud Run)
+  LTipo := DetectarTipoDocumento(AChave);
+  LTmpPath := TPath.Combine('/tmp/nfe', AChave + '-' + LTipo + '.xml');
+  LTmpPathLegacy := TPath.Combine('/tmp/nfe', AChave + '-nfe.xml');
   if TFile.Exists(LTmpPath) then
   begin
-    Result := TFile.ReadAllText(LTmpPath, TEncoding.UTF8);
+    Result := SanitizarXMLConteudo(TFile.ReadAllText(LTmpPath, TEncoding.UTF8));
     Exit;
   end;
+  if TFile.Exists(LTmpPathLegacy) then
+  begin
+    Result := SanitizarXMLConteudo(TFile.ReadAllText(LTmpPathLegacy, TEncoding.UTF8));
+    Exit;
+  end;}
 
   // 2. Banco de dados — fonte definitiva
   // Detecta modelo pelo tamanho da chave (44 dígitos) e posição 21-22 (55=NFe, 65=NFCe)
@@ -1269,7 +1786,7 @@ begin
     LQuery.AddParam('CHAVE', AChave);
     LQuery.Open;
     if not LQuery.DataSet.IsEmpty then
-      Result := LQuery.DataSet.Fields[0].AsString;
+      Result := LQuery.DataSet.Fields[0].AsString;    
   except
     on E: Exception do
       TLogger.Error('ACBr.Service.ObterXML: %s', [E.Message]);
@@ -1282,11 +1799,13 @@ var
   LTmpDir    : string;
   LXMLPath   : string;
   LPDFPath   : string;
+  LTipo      : string;
 begin
   Result := '';
 
   // Resolve o XML (cache /tmp ou banco)
   LXMLContent := ObterXML(AChave);
+  TLogger.Info('ACBr.Service.GerarDANFe: ', [LXMLContent]);
   if LXMLContent.IsEmpty then
   begin
     TLogger.Warn('ACBr.Service.GerarDANFe: XML não encontrado para chave %s', [AChave]);
@@ -1294,34 +1813,94 @@ begin
   end;
 
   // Grava em /tmp para o ACBr ler do disco
+  LTipo := DetectarTipoDocumento(AChave);
   LTmpDir  := '/tmp/nfe';
-  LXMLPath := TPath.Combine(LTmpDir, AChave + '-nfe.xml');
+  LXMLPath := TPath.Combine(LTmpDir, AChave + '-' + LTipo + '.xml');
   LPDFPath := TPath.Combine(LTmpDir, AChave + '-danfe.pdf');
 
   try
     if not TDirectory.Exists(LTmpDir) then
       TDirectory.CreateDirectory(LTmpDir);
 
-    if not TFile.Exists(LXMLPath) then
-      TFile.WriteAllText(LXMLPath, LXMLContent, TEncoding.UTF8);
+    // Grava sem BOM para evitar caractere extra antes da tag raiz no parser.
+    TFile.WriteAllBytes(LXMLPath, TEncoding.UTF8.GetBytes(LXMLContent));
+    TLogger.Info('ACBr.Service.GerarDANFe: ', [LXMLPath]);
+    
+    PrepararDANFE(LTipo);
 
-    // TODO: implementar geração real do DANFE quando a lib estiver disponível
-    // FACBrNFe.DANFE.NomeArquivo := LPDFPath;
-    // FACBrNFe.NotasFiscais.LoadFromFile(LXMLPath);
-    // FACBrNFe.DANFE.Imprimir;
-    // Result := LPDFPath;
+    if not Assigned(FACBrNFe.DANFE) then
+    begin
+      TLogger.Error('ACBr.Service.GerarDANFe: componente DANFE não inicializado para tipo %s', [LTipo]);
+      Exit;
+    end;
 
-    TLogger.Info('ACBr.Service.GerarDANFe: XML disponível em %s (PDF pendente de implementação)', [LXMLPath]);
-    Result := LXMLPath; // por ora retorna path do XML
+    FACBrNFe.NotasFiscais.Clear;
+    FACBrNFe.DANFE.NomeDocumento := LPDFPath;
+    FACBrNFe.NotasFiscais.LoadFromFile(LXMLPath);
+    FACBrNFe.NotasFiscais.ImprimirPDF;
+
+    if TFile.Exists(LPDFPath) then
+      Result := LPDFPath
+    else if (not FACBrNFe.DANFE.ArquivoPDF.IsEmpty) and TFile.Exists(FACBrNFe.DANFE.ArquivoPDF) then
+      Result := FACBrNFe.DANFE.ArquivoPDF;
+//    if not Result.IsEmpty then
+//      SalvarDANFE(AChave, Result);
+
+    //TLogger.Info('ACBr.Service.GerarDANFe: XML disponível em %s (PDF pendente de implementação)', [LXMLPath]);
+    //Result := LXMLPath; // por ora retorna path do XML
   except
     on E: Exception do
       TLogger.Error('ACBr.Service.GerarDANFe: %s', [E.Message]);
   end;
 end;
 
+procedure TACBrNFeService.SalvarDANFE(const AChave, APDFPath: string);
+var
+  LQuery: iQuery;
+  LPDFBase64: string;
+  LTabela: string;
+  LColDANFE: string;
+  LColChave: string;
+begin
+  if AChave.IsEmpty or APDFPath.IsEmpty or (not TFile.Exists(APDFPath)) then
+    Exit;
+
+  if DetectarTipoDocumento(AChave) = 'nfce' then
+  begin
+    LTabela := 'NFC';
+    LColDANFE := 'NFC_DANFE';
+    LColChave := 'NFC_CHAVE_NFCE';
+  end
+  else
+  begin
+    LTabela := 'NOTAS_FISCAIS';
+    LColDANFE := 'NOT_DANFE';
+    LColChave := 'NOT_CHAVE_NFE';
+  end;
+
+  try
+    LPDFBase64 := TNetEncoding.Base64.EncodeBytesToString(TFile.ReadAllBytes(APDFPath));
+
+    LQuery := TDatabase.Query;
+    LQuery.Clear;
+    LQuery.Add('UPDATE ' + LTabela);
+    LQuery.Add('   SET ' + LColDANFE + ' = :DANFE');
+    LQuery.Add(' WHERE ' + LColChave + ' = :CHAVE');
+    LQuery.AddParam('CHAVE', AChave);
+    LQuery.AddParam('DANFE', LPDFBase64);
+    LQuery.ExecSQL;
+
+    TLogger.Info('ACBr.Service.SalvarDANFE: DANFE salvo no banco (chave=%s)', [AChave]);
+  except
+    on E: Exception do
+      TLogger.Warn('ACBr.Service.SalvarDANFE: %s', [E.Message]);
+  end;
+end;
+
 
 procedure TACBrNFeService.SalvarXML(const AChave, AConteudo, ATipo: string);
 var
+  LXML: string;
   LTmpDir : string;
   LTmpPath: string;
   LTabela : string;
@@ -1331,6 +1910,13 @@ var
 begin
   if AChave.IsEmpty or AConteudo.IsEmpty then
     Exit;
+  TLogger.Info('ACBr.Service.SalvarXML: %s', [AConteudo]);
+  LXML := AConteudo;
+  if LXML.IsEmpty then
+  begin
+    TLogger.Warn('ACBr.Service.SalvarXML: conteúdo XML inválido após sanitização (chave=%s)', [AChave]);
+    Exit;
+  end;
 
   // ------------------------------------------------------------------
   // 1. Persiste no banco de dados (Firebird) — armazenamento definitivo.
@@ -1363,7 +1949,7 @@ begin
     LQuery.Add('   SET ' + LColXML + ' = :XML');
     LQuery.Add(' WHERE ' + LColChave + ' = :CHAVE');
     LQuery.AddParam('CHAVE', AChave);
-    LQuery.AddParam('XML',   AConteudo);
+    LQuery.AddParam('XML',   LXML);
     LQuery.ExecSQL;
     TLogger.Info('ACBr.Service.SalvarXML: XML da %s gravado no banco (chave=%s)', [ATipo, AChave]);
   except
@@ -1382,7 +1968,7 @@ begin
     if not TDirectory.Exists(LTmpDir) then
       TDirectory.CreateDirectory(LTmpDir);
     LTmpPath := TPath.Combine(LTmpDir, AChave + '-' + ATipo + '.xml');
-    TFile.WriteAllText(LTmpPath, AConteudo, TEncoding.UTF8);
+    TFile.WriteAllText(LTmpPath, LXML, TEncoding.UTF8);
     TLogger.Debug('ACBr.Service.SalvarXML: cópia temporária em %s', [LTmpPath]);
   except
     on E: Exception do

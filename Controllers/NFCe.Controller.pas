@@ -44,6 +44,7 @@ type
   public
     class procedure Registrar;
   private
+    class procedure Listar(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class procedure Emitir(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class procedure Consultar(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class procedure Cancelar(Req: THorseRequest; Res: THorseResponse; Next: TProc);
@@ -51,6 +52,7 @@ type
     class procedure ObterDANFE(Req: THorseRequest; Res: THorseResponse; Next: TProc);
     class function  ExtrairCNPJ(Req: THorseRequest): string;
     class function  ExtrairUserId(Req: THorseRequest): Integer;
+    class function  SomenteDigitos(const AValue: string): string;
   end;
 
 implementation
@@ -59,7 +61,10 @@ uses
   ACBr.Service,
   Response.Utils,
   Logger.Utils,
-  Horse.GBSwagger;
+  Horse.GBSwagger,
+  UnitDatabase,
+  UnitConnection.Model.Interfaces,
+  Data.DB;
 
 { TNFCeController }
 
@@ -77,6 +82,89 @@ begin
   try
     Result := Req.Session<TJSONObject>.GetValue<Integer>('user_id');
   except end;
+end;
+
+class function TNFCeController.SomenteDigitos(const AValue: string): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 1 to Length(AValue) do
+    if CharInSet(AValue[I], ['0'..'9']) then
+      Result := Result + AValue[I];
+end;
+
+class procedure TNFCeController.Listar(Req: THorseRequest; Res: THorseResponse; Next: TProc);
+var
+  LCNPJ: string;
+  LLimit: Integer;
+  LCount: Integer;
+  LQuery: iQuery;
+  LData: TJSONArray;
+  LItem: TJSONObject;
+  LDataHora: string;
+begin
+  try
+    LCNPJ := SomenteDigitos(ExtrairCNPJ(Req));
+    if LCNPJ.IsEmpty then
+    begin
+      Res.Send<TJSONObject>(TResponseUtils.Unauthorized('Token sem CNPJ do usuário'))
+         .Status(THTTPStatus.Unauthorized);
+      Exit;
+    end;
+
+    LLimit := StrToIntDef(Req.Query.Items['limit'], 50);
+    if LLimit <= 0 then
+      LLimit := 50;
+    if LLimit > 200 then
+      LLimit := 200;
+
+    LQuery := TDatabase.Query;
+    LQuery.Clear;
+    LQuery.Add('SELECT NFC_CHAVE_NFCE AS CHAVE, NFC_PROT_AUT_NFCE AS PROTOCOLO,');
+    LQuery.Add('       NFC_SITUACAO_NFCE AS SITUACAO, NFC_DATA AS DATA_EMISSAO,');
+    LQuery.Add('       NFC_HORA AS HORA_EMISSAO, NFC_VALOR AS VALOR, NFC_NF AS NUMERO, NFC_SERIE AS SERIE');
+    LQuery.Add('  FROM NFC');
+    LQuery.Add(' WHERE SUBSTRING(NFC_CHAVE_NFCE FROM 7 FOR 14) = :CNPJ');
+    LQuery.Add(' ORDER BY NFC_DATA DESC, NFC_HORA DESC, NFC_CODIGO DESC');
+    LQuery.AddParam('CNPJ', LCNPJ);
+    LQuery.Open;
+
+    LData := TJSONArray.Create;
+    LCount := 0;
+    while (not LQuery.DataSet.Eof) and (LCount < LLimit) do
+    begin
+      if (not LQuery.DataSet.FieldByName('DATA_EMISSAO').IsNull) and
+         (not LQuery.DataSet.FieldByName('HORA_EMISSAO').IsNull) then
+        LDataHora :=
+          FormatDateTime('yyyy-mm-dd', LQuery.DataSet.FieldByName('DATA_EMISSAO').AsDateTime) + 'T' +
+          FormatDateTime('hh:nn:ss', LQuery.DataSet.FieldByName('HORA_EMISSAO').AsDateTime)
+      else
+        LDataHora := '';
+
+      LItem := TJSONObject.Create;
+      LItem.AddPair('chave', LQuery.DataSet.FieldByName('CHAVE').AsString);
+      LItem.AddPair('protocolo', LQuery.DataSet.FieldByName('PROTOCOLO').AsString);
+      LItem.AddPair('situacao', LQuery.DataSet.FieldByName('SITUACAO').AsString);
+      LItem.AddPair('numero', TJSONNumber.Create(LQuery.DataSet.FieldByName('NUMERO').AsInteger));
+      LItem.AddPair('serie', LQuery.DataSet.FieldByName('SERIE').AsString);
+      LItem.AddPair('valor', TJSONNumber.Create(LQuery.DataSet.FieldByName('VALOR').AsFloat));
+      LItem.AddPair('emitida_em', LDataHora);
+      LData.AddElement(LItem);
+
+      Inc(LCount);
+      LQuery.DataSet.Next;
+    end;
+
+    Res.Send<TJSONObject>(TResponseUtils.SuccessData(LData));
+  except
+    on E: Exception do
+    begin
+      TLogger.Error('NFCe.Controller.Listar', E);
+      Res.Send<TJSONObject>(TResponseUtils.InternalError(E.Message))
+         .Status(THTTPStatus.InternalServerError);
+    end;
+  end;
 end;
 
 class procedure TNFCeController.Emitir(Req: THorseRequest; Res: THorseResponse; Next: TProc);
@@ -330,6 +418,7 @@ end;
 
 class procedure TNFCeController.Registrar;
 begin
+  THorse.Group.Prefix('/v1').Route('/nfce').Get(Listar);
   THorse.Group.Prefix('/v1').Route('/nfce').Post(Emitir);
   THorse.Group.Prefix('/v1').Route('/nfce/:chave').Get(Consultar);
   THorse.Group.Prefix('/v1').Route('/nfce/:chave/cancelar').Post(Cancelar);
@@ -340,6 +429,12 @@ end;
 initialization
   Swagger
     .BasePath('v1')
+      .Path('nfce')
+        .Tag('NFC-e')
+        .GET('Listar NFC-e emitidas do usuário logado')
+          .AddResponse(200, 'Lista de NFC-e emitidas').&End
+        .&End
+      .&End
       .Path('nfce')
         .Tag('NFC-e')
         .POST('Emitir NFC-e (modelo 65)')

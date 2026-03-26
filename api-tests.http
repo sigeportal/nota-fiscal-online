@@ -3,10 +3,15 @@
 # 1) Run the "Login" request and copy the returned token value (data.token).
 # 2) Set the value of the `token` variable below (replace the empty value) or use your REST client environment feature.
 # 3) Run the other requests which use the Authorization header.
-
-# Base URL (ajustado para porta 9000)
+#https://servidor-nota-fiscal-434040955537.southamerica-east1.run.app
+# Base URL (ajustado para porta 3333)
 @baseUrl = http://localhost:9000
-@token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJOb3RhRmlzY2FsQVBJIiwic3ViIjoicG9ydGFsIiwiaWF0IjoxNzc0MzA1NTU1LCJleHAiOjE3Nzk0ODk1NTUsInVzZXJfaWQiOjEsImNucGoiOiIwMDA3MzM2NTAwMDE0NiJ9.t_JIvtDWhCjmz6j6Yr41OnHj8Kzbm-gbdpkQkbm4_A0
+@token = eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJOb3RhRmlzY2FsQVBJIiwic3ViIjoicG9ydGFsIiwiaWF0IjoxNzc0NTM2MjA5LCJleHAiOjE3Nzk3MjAyMDksInVzZXJfaWQiOjEsImNucGoiOiIwMDA3MzM2NTAwMDE0NiJ9.xfO-t9IWl7J7bXU7CTb4sV_CSsl2VRnwPHF7OUXjrRQ
+@cnpj = 00073365000146
+@nfeChave = 00000000000000000000000000000000000000000000
+@nfeProtocolo = 000000000000000
+@nfceChave = 50260300073365000146650020000001001355484878
+@nfceProtocolo = 150260000045345
 
 ### Login
 POST {{baseUrl}}/v1/auth/login
@@ -17,9 +22,60 @@ Content-Type: application/json
   "password": "portal3694"
 }
 
+### Cadastrar usuario (publico)
+POST {{baseUrl}}/v1/usuarios
+Content-Type: application/json
+
+{
+  "username": "portal_teste",
+  "email": "portal_teste@example.com",
+  "password": "portal3694",
+  "cnpj": "{{cnpj}}",
+  "razao_social": "AUTO PECAS RIO DOURADOS LTDA"
+}
+
 ### Health (public)
 GET {{baseUrl}}/health
 Accept: application/json
+
+### busca configuracoes
+GET {{baseUrl}}/v1/configuracoes
+Accept: application/json
+Authorization: Bearer {{token}}
+
+
+### salvar configuracoes
+PUT {{baseUrl}}/v1/configuracoes
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "uf": "MS",
+  "ambiente_producao": 0,
+  "nfce_id_csc": "000001",
+  "nfce_csc": "INFORME_O_CSC_DA_NFCE",
+  "nfce_serie": "1",
+  "nfce_numero_inicial": 1,
+  "nfe_serie": "1",
+  "nfe_numero_inicial": 1,
+  "resp_cnpj": "{{cnpj}}",
+  "resp_contato": "Suporte API",
+  "resp_email": "suporte@example.com",
+  "resp_fone": "6733334444",
+  "resp_id_csrt": "000001",
+  "resp_csrt": "INFORME_O_CSRT",
+  "emit_nome": "AUTO PECAS RIO DOURADOS",
+  "emit_cnpj": "{{cnpj}}",
+  "emit_ie": "282840770",
+  "emit_endereco": "Rua Exemplo",
+  "emit_numero": "100",
+  "emit_bairro": "Centro",
+  "emit_municipio": "Fatima do Sul",
+  "emit_cep": "79700000",
+  "emit_telefone": "6733334444",
+  "emit_crt": 1,
+  "emit_cod_municipio": "5003801"
+}
 
 
 ### Swagger JSON (docs)
@@ -28,7 +84,7 @@ Accept: application/json
 
 
 ### Get certificate status (replace CNPJ if needed)
-GET {{baseUrl}}/v1/certificados/00073365000146
+GET {{baseUrl}}/v1/certificados/{{cnpj}}
 Accept: application/json
 Authorization: Bearer {{token}}
 
@@ -39,7 +95,7 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
-  "cnpj": "00073365000146",
+  "cnpj": "{{cnpj}}",
   "certificado": "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",
   "senha": "zacarias200968"
 }
@@ -51,6 +107,21 @@ Accept: application/json
 Authorization: Bearer {{token}}
 
 
+### Inutilizar numeracao na SEFAZ
+POST {{baseUrl}}/v1/sefaz/inutilizar
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "cnpj": "{{cnpj}}",
+  "justificativa": "Inutilizacao de numeracao para testes internos",
+  "serie": "1",
+  "nn_ini": 900,
+  "nn_fin": 901,
+  "modelo": 55
+}
+
+
 ### Emit NFC-e (example payload)
 POST {{baseUrl}}/v1/nfce
 Content-Type: application/json
@@ -59,20 +130,22 @@ Authorization: Bearer {{token}}
 {
   "cnpj_emitente": "00073365000146",
   "natureza_operacao": "VENDA A CONSUMIDOR",
-  "serie": 1,
+  "serie": 2,
   "ambiente": 2,
   "emit_razao_social": "AUTO_PECAS_RIO_DOURADOS",
   "emit_nome_fantasia": "AUTO PECAS RIO",
-  "emit_ie": "123456789",
-  "emit_crt": 3,
+  "emit_ie": "282840770",
+  "emit_crt": 1,
+  "emit_cod_uf": 50,
+  "emit_cod_mun_ibge": 5003801,  
   "emit_endereco": {
     "logradouro": "Rua Exemplo",
     "numero": "100",
     "bairro": "Centro",
-    "municipio": "Sao Paulo",
-    "uf": "SP",
-    "cep": "01001000",
-    "codigo_municipio": 3550308
+    "municipio": "Fátima do Sul",
+    "uf": "MS",
+    "cep": "79700000",
+    "codigo_municipio": 5003801
   },
   "cpf_cliente": "",
   "nome_cliente": "",
@@ -81,7 +154,7 @@ Authorization: Bearer {{token}}
       "codigo": "001",
       "descricao": "Produto A",
       "ean": "SEM GTIN",
-      "ncm": "87082900",
+      "ncm": "00000000",
       "cfop": "5102",
       "unidade": "UN",
       "quantidade": 1,
@@ -104,6 +177,39 @@ Authorization: Bearer {{token}}
     }
   ]
 }
+
+### Listar NFC-e emitidas (usuario logado)
+GET {{baseUrl}}/v1/nfce?limit=50
+Accept: application/json
+Authorization: Bearer {{token}}
+
+### Consultar NFC-e por chave
+GET {{baseUrl}}/v1/nfce/{{nfceChave}}
+Accept: application/json
+Authorization: Bearer {{token}}
+
+
+### Cancelar NFC-e
+POST {{baseUrl}}/v1/nfce/{{nfceChave}}/cancelar
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "protocolo": "{{nfceProtocolo}}",
+  "justificativa": "Cancelamento solicitado para testes"
+}
+
+
+### Obter XML da NFC-e
+GET {{baseUrl}}/v1/nfce/{{nfceChave}}/xml
+Accept: application/xml
+Authorization: Bearer {{token}}
+
+
+### Obter DANFE da NFC-e
+GET {{baseUrl}}/v1/nfce/{{nfceChave}}/danfe
+Accept: application/pdf
+Authorization: Bearer {{token}}
 
 ### Emit NF-e (example payload)
 POST {{baseUrl}}/v1/nfe
@@ -159,9 +265,9 @@ Authorization: Bearer {{token}}
       "cest": "",
       "cst_icms": "102",
       "aliq_icms": 0,
-      "cst_pis": "99",
+      "cst_pis": "07",
       "aliq_pis": 0,
-      "cst_cofins": "99",
+      "cst_cofins": "07",
       "aliq_cofins": 0,
       "desconto": 0
     },
@@ -178,9 +284,9 @@ Authorization: Bearer {{token}}
       "cest": "",
       "cst_icms": "102",
       "aliq_icms": 0,
-      "cst_pis": "99",
+      "cst_pis": "07",
       "aliq_pis": 0,
-      "cst_cofins": "99",
+      "cst_cofins": "07",
       "aliq_cofins": 0,
       "desconto": 0
     }
@@ -194,3 +300,36 @@ Authorization: Bearer {{token}}
   "info_complementar": "Teste de emissão NFe via API - ambiente homologacao",
   "info_fisco": "Sem observações fiscais"
 }
+
+### Listar NF-e emitidas (usuario logado)
+GET {{baseUrl}}/v1/nfe?limit=50
+Accept: application/json
+Authorization: Bearer {{token}}
+
+### Consultar NF-e por chave
+GET {{baseUrl}}/v1/nfe/{{nfeChave}}
+Accept: application/json
+Authorization: Bearer {{token}}
+
+
+### Cancelar NF-e
+POST {{baseUrl}}/v1/nfe/{{nfeChave}}/cancelar
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "protocolo": "{{nfeProtocolo}}",
+  "justificativa": "Cancelamento solicitado para testes"
+}
+
+
+### Obter XML da NF-e
+GET {{baseUrl}}/v1/nfe/{{nfeChave}}/xml
+Accept: application/xml
+Authorization: Bearer {{token}}
+
+
+### Obter DANFE da NF-e
+GET {{baseUrl}}/v1/nfe/{{nfeChave}}/danfe
+Accept: application/pdf
+Authorization: Bearer {{token}}
