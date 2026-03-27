@@ -1748,7 +1748,7 @@ var
 begin
   Result := '';
 
-  {// 1. Cache /tmp (disponível na mesma instância Cloud Run)
+  // 1. Cache /tmp (disponível na mesma instância Cloud Run)
   LTipo := DetectarTipoDocumento(AChave);
   LTmpPath := TPath.Combine('/tmp/nfe', AChave + '-' + LTipo + '.xml');
   LTmpPathLegacy := TPath.Combine('/tmp/nfe', AChave + '-nfe.xml');
@@ -1761,7 +1761,7 @@ begin
   begin
     Result := SanitizarXMLConteudo(TFile.ReadAllText(LTmpPathLegacy, TEncoding.UTF8));
     Exit;
-  end;}
+  end;
 
   // 2. Banco de dados — fonte definitiva
   // Detecta modelo pelo tamanho da chave (44 dígitos) e posição 21-22 (55=NFe, 65=NFCe)
@@ -1786,7 +1786,7 @@ begin
     LQuery.AddParam('CHAVE', AChave);
     LQuery.Open;
     if not LQuery.DataSet.IsEmpty then
-      Result := LQuery.DataSet.Fields[0].AsString;    
+      Result := SanitizarXMLConteudo(LQuery.DataSet.Fields[0].AsString);
   except
     on E: Exception do
       TLogger.Error('ACBr.Service.ObterXML: %s', [E.Message]);
@@ -1799,20 +1799,22 @@ var
   LTmpDir    : string;
   LXMLPath   : string;
   LPDFPath   : string;
+  LPDFGerado : string;
+  LPDFSize   : Int64;
   LTipo      : string;
+  LFileStream: TFileStream;
 begin
   Result := '';
 
   // Resolve o XML (cache /tmp ou banco)
-  LXMLContent := ObterXML(AChave);
-  TLogger.Info('ACBr.Service.GerarDANFe: ', [LXMLContent]);
+  LXMLContent := SanitizarXMLConteudo(ObterXML(AChave));
   if LXMLContent.IsEmpty then
   begin
     TLogger.Warn('ACBr.Service.GerarDANFe: XML não encontrado para chave %s', [AChave]);
     Exit;
   end;
 
-  // Grava em /tmp para o ACBr ler do disco
+  // Grava em /tmp e carrega do arquivo para evitar problemas de encoding no Linux.
   LTipo := DetectarTipoDocumento(AChave);
   LTmpDir  := '/tmp/nfe';
   LXMLPath := TPath.Combine(LTmpDir, AChave + '-' + LTipo + '.xml');
@@ -1822,10 +1824,11 @@ begin
     if not TDirectory.Exists(LTmpDir) then
       TDirectory.CreateDirectory(LTmpDir);
 
-    // Grava sem BOM para evitar caractere extra antes da tag raiz no parser.
+    if TFile.Exists(LPDFPath) then
+      TFile.Delete(LPDFPath);
+
     TFile.WriteAllBytes(LXMLPath, TEncoding.UTF8.GetBytes(LXMLContent));
-    TLogger.Info('ACBr.Service.GerarDANFe: ', [LXMLPath]);
-    
+
     PrepararDANFE(LTipo);
 
     if not Assigned(FACBrNFe.DANFE) then
@@ -1839,15 +1842,42 @@ begin
     FACBrNFe.NotasFiscais.LoadFromFile(LXMLPath);
     FACBrNFe.NotasFiscais.ImprimirPDF;
 
-    if TFile.Exists(LPDFPath) then
-      Result := LPDFPath
-    else if (not FACBrNFe.DANFE.ArquivoPDF.IsEmpty) and TFile.Exists(FACBrNFe.DANFE.ArquivoPDF) then
-      Result := FACBrNFe.DANFE.ArquivoPDF;
-//    if not Result.IsEmpty then
-//      SalvarDANFE(AChave, Result);
+    LPDFGerado := '';
+    LPDFSize := 0;
 
-    //TLogger.Info('ACBr.Service.GerarDANFe: XML disponível em %s (PDF pendente de implementação)', [LXMLPath]);
-    //Result := LXMLPath; // por ora retorna path do XML
+    if TFile.Exists(LPDFPath) then
+    begin
+      LFileStream := TFileStream.Create(LPDFPath, fmOpenRead or fmShareDenyWrite);
+      try
+        LPDFSize := LFileStream.Size;
+      finally
+        LFileStream.Free;
+      end;
+      if LPDFSize > 0 then
+        LPDFGerado := LPDFPath;
+    end
+    else if (not FACBrNFe.DANFE.ArquivoPDF.IsEmpty) and TFile.Exists(FACBrNFe.DANFE.ArquivoPDF) then
+    begin
+      LFileStream := TFileStream.Create(FACBrNFe.DANFE.ArquivoPDF, fmOpenRead or fmShareDenyWrite);
+      try
+        LPDFSize := LFileStream.Size;
+      finally
+        LFileStream.Free;
+      end;
+      if LPDFSize > 0 then
+        LPDFGerado := FACBrNFe.DANFE.ArquivoPDF;
+    end;
+
+    if LPDFGerado.IsEmpty then
+    begin
+      TLogger.Error('ACBr.Service.GerarDANFe: PDF não gerado ou vazio para chave %s', [AChave]);
+      Exit;
+    end;
+
+    Result := LPDFGerado;
+    SalvarDANFE(AChave, Result);
+
+    TLogger.Info('ACBr.Service.GerarDANFe: PDF gerado em %s (%d bytes)', [Result, LPDFSize]);
   except
     on E: Exception do
       TLogger.Error('ACBr.Service.GerarDANFe: %s', [E.Message]);

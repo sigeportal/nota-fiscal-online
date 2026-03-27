@@ -380,7 +380,6 @@ var
   LCNPJ   : string;
   LService: TACBrNFeService;
   LPDFPath: string;
-  LStream : TFileStream;
 begin
   try
     LChave := Req.Params.Items['chave'];
@@ -398,14 +397,7 @@ begin
       Res.Send<TJSONObject>(TResponseUtils.NotFound('DANFCe'))
          .Status(THTTPStatus.NotFound)
     else
-    begin
-      LStream := TFileStream.Create(LPDFPath, fmOpenRead or fmShareDenyWrite);
-      try
-        Res.Send<TStream>(LStream);
-      finally
-        LStream.Free;
-      end;
-    end;
+      Res.SendFile(LPDFPath, 'application/pdf');
   except
     on E: Exception do
     begin
